@@ -100,7 +100,7 @@ int main(int argc, char * argv[])
 
     Point * A;
     Point * B;
-    if(SM_GPU != searchMode)
+    if(SM_CPU == searchMode || SM_HYBRID == searchMode || SM_HYBRID_STATIC == searchMode)
     {
         fprintf(stdout, "[MAIN] ~ Converting the dataset for Super-EGO\n");
         A = new Point[DBSIZE + 1];
@@ -117,6 +117,13 @@ int main(int argc, char * argv[])
         B = A;
     }
 
+    #if REORDER_DIM_BY_VAR
+        double tBeginReorderVar = omp_get_wtime();
+        reorderDimensionsByVariance(&NDdataPoints);
+        double tEndReorderVar = omp_get_wtime();
+        fprintf(stdout, "[MAIN | TIME] ~ Time to reorder the dimensions by variance: %f\n", tEndReorderVar - tBeginReorderVar);
+    #endif
+
     DTYPE * database = new DTYPE [DBSIZE * GPUNUMDIM];
     for(int i = 0; i < DBSIZE; ++i)
     {
@@ -126,6 +133,9 @@ int main(int argc, char * argv[])
         }
         // std::copy(NDdataPoints[i].begin(), NDdataPoints[i].end(), database + i * GPUNUMDIM);
     }
+
+    NDdataPoints.clear();
+    NDdataPoints.shrink_to_fit();
 
     // Static partitioning between CPU and GPU components
     if (SM_HYBRID_STATIC == searchMode)
@@ -186,15 +196,21 @@ int main(int argc, char * argv[])
             // #endif
         }
     } else { // Dynamic partitioning or CPU/GPU alone
-        if (SM_GPU == searchMode)
+        if (SM_CPU == searchMode || SM_HYBRID == searchMode)
         {
-            // The GPU is alone so it takes all the work
-            staticPartition = 1.0;
-        } else {
-            // The CPU is alone so it takes all the work, or it's the regular (dynamic) hybrid
-            // so the staticPartition value does not matter
             staticPartition = 0.0;
+        } else {
+            staticPartition = 1.0;
         }
+        // if (SM_GPU == searchMode)
+        // {
+        //     // The GPU is alone so it takes all the work
+        //     staticPartition = 1.0;
+        // } else {
+        //     // The CPU is alone so it takes all the work, or it's the regular (dynamic) hybrid
+        //     // so the staticPartition value does not matter
+        //     staticPartition = 0.0;
+        // }
     }
 
     DTYPE * minArr = new DTYPE [NUMINDEXEDDIM];
@@ -263,14 +279,23 @@ int main(int argc, char * argv[])
 
         if(0 == tid) // GPU part
         {
-            if(searchMode != SM_CPU)
+            if(searchMode != SM_CPU) // Only search mode where the GPU is not used
             {
                 double tBeginGPU = omp_get_wtime();
                 #if SORT_BY_WORKLOAD
-                    distanceTableNDGridBatches(searchMode, staticPartition, &DBSIZE, &epsilon, dev_epsilon, database, dev_database,
-                            index, dev_index, indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr,
-                            minArr, dev_minArr, nCells, dev_nCells, &nNonEmptyCells, dev_nNonEmptyCells,
-                            originPointIndex, dev_originPointIndex, neighborTable, &pointersToNeighbors, &totalNeighbors, &nbQueriesGPU);
+                    if (SM_GPU_HALF <= searchMode)
+                    {
+                        GPUJoinMainIndex_alt(searchMode, database, dev_database, &DBSIZE, epsilon, dev_epsilon, index, dev_index,
+                                indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr, minArr, dev_minArr,
+                                nCells, dev_nCells, nNonEmptyCells, dev_nNonEmptyCells, originPointIndex, dev_originPointIndex,
+                                neighborTable, &pointersToNeighbors, &totalNeighbors, &totalNeighborsCuda, &totalNeighborsTensor,
+                                &totalQueriesCuda, &totalQueriesTensor, &totalKernelCuda, &totalKernelTensor);
+                    } else {
+                        distanceTableNDGridBatches(searchMode, staticPartition, &DBSIZE, &epsilon, dev_epsilon, database, dev_database,
+                                index, dev_index, indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr,
+                                minArr, dev_minArr, nCells, dev_nCells, &nNonEmptyCells, dev_nNonEmptyCells,
+                                originPointIndex, dev_originPointIndex, neighborTable, &pointersToNeighbors, &totalNeighbors, &nbQueriesGPU);
+                    }
                 #else
                     distanceTableNDGridBatches(searchMode, staticPartition, &DBSIZE, &epsilon, dev_epsilon, database, dev_database,
                             index, dev_index, indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr,
@@ -283,7 +308,7 @@ int main(int argc, char * argv[])
         }
         else // Super-EGO part
         {
-            if(searchMode != SM_GPU)
+            if(SM_CPU == searchMode || SM_HYBRID == searchMode || SM_HYBRID_STATIC == searchMode)
             {
                 if(searchMode == SM_CPU)
                 {
@@ -363,6 +388,36 @@ int main(int argc, char * argv[])
 
     displayIndexes();
 
+    switch(searchMode)
+    {
+        case SM_GPU:
+        case SM_GPU_HALF:
+        case SM_GPU_HALF2:
+        case SM_TENSOR:
+        {
+            fprintf(stdout, "[RESULT] ~ Total result set size on the GPU: %lu\n", totalNeighbors);
+            break;
+        }
+        case SM_CPU:
+        {
+            fprintf(stdout, "[RESULT] ~ Total result set size on the CPU: %lu\n", totalNeighborsCPU);
+            break;
+        }
+        case SM_HYBRID:
+        case SM_HYBRID_STATIC:
+        {
+            fprintf(stdout, "[RESULT] ~ Total result set size: %lu\n", totalNeighbors + totalNeighborsCPU);
+            fprintf(stdout, "   [RESULT] ~ Total result set size on the GPU: %lu\n", totalNeighbors);
+            fprintf(stdout, "   [RESULT] ~ Total result set size on the CPU: %lu\n", totalNeighborsCPU);
+            break;
+        }
+        case SM_TENSOR_HYBRID:
+        case SM_TENSOR_HYBRID_HALF2:
+        {
+
+        }
+    }
+
     fprintf(stdout, "[RESULT] ~ Total result set size: %lu\n", totalNeighbors + totalNeighborsCPU);
     fprintf(stdout, "   [RESULT] ~ Total result set size on the GPU: %lu\n", totalNeighbors);
     fprintf(stdout, "   [RESULT] ~ Total result set size on the CPU: %lu\n", totalNeighborsCPU);
@@ -385,6 +440,7 @@ int main(int argc, char * argv[])
                     nbQueriesTmp += nbPoints;
                 }
             }
+
             fprintf(stdout, "   [RESULT] ~ Total number of candidate points refined by the GPU: %lu (f: %f)\n", nbCandidatesGPU, (nbCandidatesGPU * 1.0) / (totalCandidates * 1.0));
             fprintf(stdout, "   [RESULT] ~ Total number of candidate points refined by the CPU (if using the grid): %lu\n", totalCandidates - nbCandidatesGPU);
         }
@@ -395,19 +451,22 @@ int main(int argc, char * argv[])
     fprintf(stdout, "   [RESULT] ~ Total execution time for the GPU: %f\n", gpuTime);
     fprintf(stdout, "   [RESULT] ~ Total execution time for the CPU: %f (reorder: %f, sort: %f, total = %f)\n", egoTime, egoReorder, egoSort, egoTime + egoReorder + egoSort);
 
-    if(tEndGPU < tEndEgo)
+    if (SM_HYBRID == searchMode || SM_HYBRID_STATIC == searchMode)
     {
-        double timeDiff = tEndEgo - tEndGPU;
-        fprintf(stdout, "[RESULT] ~ The GPU ended before the CPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
-    }else{
-        double timeDiff = tEndGPU - tEndEgo;
-        fprintf(stdout, "[RESULT] ~ The CPU ended before the GPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
+        if(tEndGPU < tEndEgo)
+        {
+            double timeDiff = tEndEgo - tEndGPU;
+            fprintf(stdout, "[RESULT] ~ The GPU ended before the CPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
+        }else{
+            double timeDiff = tEndGPU - tEndEgo;
+            fprintf(stdout, "[RESULT] ~ The CPU ended before the GPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
+        }
     }
 
     // printNeighborTable(neighborTable, 0, 20);
 
-    NDdataPoints.clear();
-    NDdataPoints.shrink_to_fit();
+    // NDdataPoints.clear();
+    // NDdataPoints.shrink_to_fit();
     pointersToNeighbors.clear();
     pointersToNeighbors.shrink_to_fit();
 
@@ -439,6 +498,7 @@ int main(int argc, char * argv[])
 
     return 0;
 }
+
 
 
 void generateNDGridDimensions(
@@ -515,6 +575,7 @@ void generateNDGridDimensions(
 }
 
 
+
 void printNeighborTable(
     struct neighborTableLookup * neighborTable,
     unsigned int begin,
@@ -535,6 +596,7 @@ void printNeighborTable(
 }
 
 
+
 struct cmpStruct
 {
     cmpStruct(std::vector< std::vector<DTYPE> > points) {this->points = points;}
@@ -545,6 +607,7 @@ struct cmpStruct
 
     std::vector< std::vector<DTYPE> > points;
 };
+
 
 
 void populateNDGridIndexAndLookupArray(
@@ -596,9 +659,7 @@ void populateNDGridIndexAndLookupArray(
     //copy the set to the vector (sets can't do binary searches -- no random access)
     std::copy(uniqueGridCellLinearIds.begin(), uniqueGridCellLinearIds.end(), std::back_inserter(uniqueGridCellLinearIdsVect));
 
-
     ///////////////////////////////////////////////
-
 
     std::vector<uint64_t> * gridElemIDs;
     gridElemIDs = new std::vector<uint64_t>[uniqueGridCellLinearIds.size()];
@@ -608,7 +669,6 @@ void populateNDGridIndexAndLookupArray(
     std::set<unsigned int> NDArrMask[NUMINDEXEDDIM];
 
     std::vector<uint64_t>::iterator lower;
-
 
     for (int i = 0; i < NDdataPoints->size(); i++)
     {
@@ -636,9 +696,6 @@ void populateNDGridIndexAndLookupArray(
         gridElemIDs[gridIdx].push_back(i);
     }
 
-
-
-
     ///////////////////////////////
     //Here we fill a temporary index with points, and then copy the non-empty cells to the actual index
     ///////////////////////////////
@@ -646,8 +703,6 @@ void populateNDGridIndexAndLookupArray(
     struct grid * tmpIndex = new grid[uniqueGridCellLinearIdsVect.size()];
 
     int cnt = 0;
-
-
 
     //populate temp index and lookup array
 
@@ -675,10 +730,8 @@ void populateNDGridIndexAndLookupArray(
 
     *nNonEmptyCells = uniqueGridCellLinearIdsVect.size();
 
-
     printf("\nSize of index that would be sent to GPU (GiB) -- (if full index sent), excluding the data lookup arr: %f", (double)sizeof(struct grid) * (totalCells) / (1024.0 * 1024.0 * 1024.0));
     printf("\nSize of compressed index to be sent to GPU (GiB) , excluding the data and grid lookup arr: %f", (double)sizeof(struct grid) * (uniqueGridCellLinearIdsVect.size() * 1.0) / (1024.0 * 1024.0 * 1024.0));
-
 
     /////////////////////////////////////////
     //copy the tmp index into the actual index that only has the non-empty cells
@@ -713,7 +766,6 @@ void populateNDGridIndexAndLookupArray(
 
     *nNDMaskElems = cntNonEmptyNDMask;
 
-
     //copy the offsets to the array
     for (int i = 0; i < NUMINDEXEDDIM; i++)
     {
@@ -727,9 +779,9 @@ void populateNDGridIndexAndLookupArray(
         //max
         gridCellNDMaskOffsets[(i * 2) + 1]  =cntNDOffsets - 1;
     }
-
     delete [] tmpIndex;
 }
+
 
 
 uint64_t getLinearID_nDimensions(
@@ -746,4 +798,89 @@ uint64_t getLinearID_nDimensions(
     }
 
     return index;
+}
+
+
+
+void reorderDimensionsByVariance(std::vector< std::vector<DTYPE> >* inputVector)
+{
+	DTYPE sums[GPUNUMDIM];
+	DTYPE average[GPUNUMDIM];
+	struct dim_reorder_sort dim_variance[GPUNUMDIM];
+
+	for (int i = 0; i < GPUNUMDIM; ++i)
+    {
+		sums[i] = 0;
+		average[i] = 0;
+	}
+
+	DTYPE greatest_variance = 0;
+	int greatest_variance_dim = 0;
+
+	int sample = 100;
+	DTYPE inv_sample = 1.0 / (sample * 1.0);
+
+    #if !SILENT_GPU
+        cout << "[Index] ~ Calculating variance based on the following fraction of points: " << inv_sample << '\n';
+    #endif
+
+    double tvariancestart = omp_get_wtime();
+	//calculate the variance in each dimension
+	for (int i = 0; i < GPUNUMDIM; ++i)
+	{
+		//first calculate the average in the dimension:
+		//only use every 10th point
+		for (int j = 0; j < (*inputVector).size(); j += sample)
+		{
+    		sums[i] += (*inputVector)[j][i];
+		}
+
+		average[i] = (sums[i]) / ((*inputVector).size() * inv_sample);
+
+		//Next calculate the std. deviation
+		sums[i] = 0; //reuse this for other sums
+		for (int j = 0; j < (*inputVector).size(); j += sample)
+		{
+    		sums[i] += (((*inputVector)[j][i]) - average[i]) * (((*inputVector)[j][i]) - average[i]);
+		}
+
+		dim_variance[i].variance = sums[i] / ((*inputVector).size() * inv_sample);
+		dim_variance[i].dim = i;
+
+		if (greatest_variance<dim_variance[i].variance)
+		{
+			greatest_variance = dim_variance[i].variance;
+			greatest_variance_dim = i;
+		}
+	}
+
+	// std::sort(dim_variance, dim_variance + GPUNUMDIM, compareByDimVariance);
+    std::sort(dim_variance, dim_variance + GPUNUMDIM,
+        [](const dim_reorder_sort &a, const dim_reorder_sort &b){ return a.variance > b.variance; });
+
+    #if !SILENT_GPU
+    	for (int i = 0; i < GPUNUMDIM; ++i)
+    	{
+            cout << "[Index] ~ Reordering by: dim:" << dim_variance[i].dim << ", variance: "  << dim_variance[i].variance << '\n';
+    	}
+    #endif
+
+    #if !SILENT_GPU
+        cout << "[Index] ~ Dimension with greatest variance: " << greatest_variance_dim << '\n';
+    #endif
+
+	std::vector<std::vector <DTYPE> > tmp_database;
+
+	tmp_database = (*inputVector);
+
+	#pragma omp parallel for num_threads(5) shared(inputVector, tmp_database)
+	for (int j = 0; j < GPUNUMDIM; j++)
+    {
+
+		int originDim = dim_variance[j].dim;
+		for (int i = 0; i < (*inputVector).size(); ++i)
+		{
+			(*inputVector)[i][j] = tmp_database[i][originDim];
+		}
+	}
 }

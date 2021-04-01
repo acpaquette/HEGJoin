@@ -1704,6 +1704,48 @@ void distanceTableNDGridBatches(
 
 
 
+void GPUJoinMainIndex_alt(
+    int searchMode,
+    ACCUM_TYPE* dataset,
+    ACCUM_TYPE* dev_database,
+    half* dev_databaseHalf,
+    unsigned int* nbQueryPoints,
+    ACCUM_TYPE* epsilon,
+    ACCUM_TYPE* dev_epsilon,
+    struct grid* grid,
+    struct grid* dev_grid,
+    unsigned int* gridLookupArr,
+    unsigned int* dev_gridLookupArr,
+    struct gridCellLookup* gridCellLookupArr,
+    struct gridCellLookup* dev_gridCellLookupArr,
+    ACCUM_TYPE* minArr,
+    ACCUM_TYPE* dev_minArr,
+    half* dev_minArrHalf,
+    unsigned int* nCells,
+    unsigned int* dev_nCells,
+    unsigned int* nNonEmptyCells,
+    unsigned int* dev_nNonEmptyCells,
+    unsigned int* originPointIndex,
+    unsigned int* dev_originPointIndex,
+    struct neighborTableLookup* neighborTable,
+    std::vector<struct neighborDataPtrs>* pointersToNeighbors,
+    uint64_t* totalNeighbors,
+    uint64_t* totalNeighborsCuda,
+    uint64_t* totalNeighborsTensor,
+    unsigned int* totalQueriesCuda,
+    unsigned int* totalQueriesTensor,
+    unsigned int* totalKernelsCuda,
+    unsigned int* totalKernelsTensor)
+{
+
+
+
+}
+
+
+
+
+
 void warmUpGPU(){
 	// initialize all ten integers of a device_vector to 1
 	thrust::device_vector<int> D(10, 1);

@@ -37,6 +37,8 @@
 // 0 to output everything, 1 to limit the output
 #define SILENT_GPU 1
 
+#define REORDER_DIM_BY_VAR 1
+
 // Metrics to evaluate the throughput of the CPU and GPU by counting the number of candidate points they refine
 #define COUNT_CANDIDATES 0
 #define COUNT_CANDIDATES_GPU 0
@@ -61,6 +63,12 @@
 #define SM_HYBRID 1
 #define SM_HYBRID_STATIC 2
 #define SM_CPU 3
+
+#define SM_GPU_HALF 4
+#define SM_GPU_HALF2 5
+#define SM_TENSOR 6
+#define SM_TENSOR_HYBRID 7
+#define SM_TENSOR_HYBRID_HALF2 8
 
 // Sorts the point by workload
 #define SORT_BY_WORKLOAD 1
