@@ -60,7 +60,7 @@ void sortInNDBins(std::vector<std::vector <DTYPE> > * dataPoints)
     std::sort(dataPoints->begin(), dataPoints->end(), sortNDComp);
 }
 
-void importNDDatasetBinary(std::vector< std::vector<DTYPE> > * dataPoints, char * fileName)
+void importNDDatasetBinary(std::vector< std::vector<double> > * dataPoints, char * fileName)
 // void importNDDatasetBinary(
 //     DTYPE * dataPoints,
 //     char * fileName,
@@ -71,15 +71,15 @@ void importNDDatasetBinary(std::vector< std::vector<DTYPE> > * dataPoints, char 
     size_t size = file.tellg();
     file.seekg(0, std::ios::beg);
     char * readBuffer = new char[size];
-    file.read(readBuffer, size * sizeof(DTYPE));
+    file.read(readBuffer, size * sizeof(double));
     file.close();
 
-    int nbPointsTmp = (size / sizeof(DTYPE)) / GPUNUMDIM;
+    int nbPointsTmp = (size / sizeof(double)) / GPUNUMDIM;
     printf("Data import: Total data points: %d\n", nbPointsTmp);
 
     // (*nbPoints) = nbPointsTmp;
 
-    DTYPE * dataPointsPointer = (double *) readBuffer;
+    double * dataPointsPointer = (double *) readBuffer;
 
     // for(int i = 0; i < 10; i++)
     // {
@@ -92,7 +92,7 @@ void importNDDatasetBinary(std::vector< std::vector<DTYPE> > * dataPoints, char 
 
     for(int i = 0; i < nbPointsTmp; ++i)
     {
-        std::vector<DTYPE> tmpPoint;
+        std::vector<double> tmpPoint;
         for(int j = 0; j < GPUNUMDIM; ++j)
         {
             tmpPoint.push_back(dataPointsPointer[i * GPUNUMDIM + j]);
@@ -102,7 +102,7 @@ void importNDDatasetBinary(std::vector< std::vector<DTYPE> > * dataPoints, char 
 
     for(int i = 0; i < 10; i++)
     {
-        std::vector<DTYPE> tmp = (*dataPoints)[i];
+        std::vector<double> tmp = (*dataPoints)[i];
         for(int j = 0; j < GPUNUMDIM; j++)
         {
             std::cout << tmp[j] << ", ";

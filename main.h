@@ -11,7 +11,7 @@ void importNDDataset(
     char * fname);
 
 void importNDDatasetBinary(
-    std::vector<std::vector <DTYPE> > * dataPoints,
+    std::vector<std::vector <double> > * dataPoints,
     // DTYPE * dataPoints,
     char * fname);
     // unsigned int * nbPoints);

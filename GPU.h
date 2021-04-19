@@ -26,6 +26,21 @@ void gridIndexingGPU(
         unsigned int * nCells,
         unsigned int ** dev_nCells);
 
+unsigned long long GPUBatchEst_alt(
+    unsigned int* nbQueryPoints,
+    DTYPE* dev_database,
+    unsigned int* dev_originPointIndex,
+    DTYPE* dev_epsilon,
+    struct grid* dev_grid,
+    unsigned int* dev_gridLookupArr,
+    struct gridCellLookup* dev_gridCellLookupArr,
+    DTYPE* dev_minArr,
+    unsigned int* dev_nCells,
+    unsigned int* dev_nNonEmptyCells,
+    unsigned int* retNumBatches,
+    unsigned int* retGPUBufferSize,
+    std::vector<struct batch>* batches);
+
 void distanceTableNDGridBatches(
         int searchMode,
         float staticPartition,
@@ -86,6 +101,39 @@ unsigned long long GPUBatchEst_v2(
         unsigned int * retNumBatches,
         unsigned int * retGPUBufferSize,
         std::vector< std::pair<unsigned int, unsigned int> > * batches);
+
+void GPUJoinMainIndex_alt(
+    int searchMode,
+    DTYPE* dataset,
+    DTYPE* dev_database,
+    unsigned int* nbQueryPoints,
+    DTYPE* epsilon,
+    DTYPE* dev_epsilon,
+    struct grid* grid,
+    struct grid* dev_grid,
+    unsigned int* gridLookupArr,
+    unsigned int* dev_gridLookupArr,
+    struct gridCellLookup* gridCellLookupArr,
+    struct gridCellLookup* dev_gridCellLookupArr,
+    DTYPE* minArr,
+    DTYPE* dev_minArr,
+    unsigned int* nCells,
+    unsigned int* dev_nCells,
+    unsigned int* nNonEmptyCells,
+    unsigned int* dev_nNonEmptyCells,
+    unsigned int* originPointIndex,
+    unsigned int* dev_originPointIndex,
+    struct neighborTableLookup* neighborTable,
+    std::vector<struct neighborDataPtrs>* pointersToNeighbors,
+    uint64_t* totalNeighbors,
+    uint64_t* totalNeighborsCuda,
+    uint64_t* totalNeighborsTensor,
+    uint64_t* totalandidatesCuda,
+    uint64_t* totalCandidatesTensor,
+    unsigned int* totalQueriesCuda,
+    unsigned int* totalQueriesTensor,
+    unsigned int* totalKernelsCuda,
+    unsigned int* totalKernelsTensor);
 
 void constructNeighborTableKeyValueWithPtrs(
         int * pointIDKey,

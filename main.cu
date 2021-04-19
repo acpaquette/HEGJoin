@@ -134,8 +134,8 @@ int main(int argc, char * argv[])
         // std::copy(NDdataPoints[i].begin(), NDdataPoints[i].end(), database + i * GPUNUMDIM);
     }
 
-    NDdataPoints.clear();
-    NDdataPoints.shrink_to_fit();
+    // NDdataPoints.clear();
+    // NDdataPoints.shrink_to_fit();
 
     // Static partitioning between CPU and GPU components
     if (SM_HYBRID_STATIC == searchMode)
@@ -220,11 +220,14 @@ int main(int argc, char * argv[])
     unsigned int nNonEmptyCells = 0;
 
     generateNDGridDimensions(&NDdataPoints, epsilon, minArr, maxArr, nCells, &totalCells);
-    fprintf(stdout, "[MAIN] ~ Total cells (including empty): %lu\n", totalCells);
+    fprintf(stdout, "[MAIN] ~ Total cells (including empty): %lu\n\n", totalCells);
+
+    NDdataPoints.clear();
+    NDdataPoints.shrink_to_fit();
 
     struct grid * index;
     struct gridCellLookup * gridCellLookupArr;
-    unsigned int * indexLookupArr = new unsigned int[NDdataPoints.size()];
+    unsigned int * indexLookupArr = new unsigned int[DBSIZE];
 
     DTYPE * dev_epsilon;
     DTYPE * dev_database;
@@ -240,7 +243,7 @@ int main(int argc, char * argv[])
             nCells, &dev_nCells);
 
     //Neighbortable storage -- the result
-    neighborTableLookup * neighborTable = new neighborTableLookup[NDdataPoints.size()];
+    neighborTableLookup * neighborTable = new neighborTableLookup[DBSIZE];
     std::vector<struct neighborDataPtrs> pointersToNeighbors;
 
     unsigned int * originPointIndex;
@@ -268,6 +271,20 @@ int main(int argc, char * argv[])
 
     unsigned int nbQueriesGPU = 0;
 
+    // Datasets with alternate precisions
+    // Allocated in GPU.cu
+    // half* dev_datasetHalf;
+    // half2* dev_datasetHalf2;
+
+    uint64_t totalNeighborsCuda = 0;
+    uint64_t totalNeighborsTensor = 0;
+    uint64_t totalCandidatesCuda = 0;
+    uint64_t totalCandidatesTensor = 0;
+    unsigned int totalQueriesCuda = 0;
+    unsigned int totalQueriesTensor = 0;
+    unsigned int totalKernelCuda = 0;
+    unsigned int totalKernelTensor = 0;
+
     omp_set_nested(1);
 	omp_set_dynamic(0);
 
@@ -283,14 +300,15 @@ int main(int argc, char * argv[])
             {
                 double tBeginGPU = omp_get_wtime();
                 #if SORT_BY_WORKLOAD
-                    if (SM_GPU_HALF <= searchMode)
+                    if (SM_GPU_HALF <= searchMode) // Using a search mode not from HEGJoin
                     {
-                        GPUJoinMainIndex_alt(searchMode, database, dev_database, &DBSIZE, epsilon, dev_epsilon, index, dev_index,
-                                indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr, minArr, dev_minArr,
-                                nCells, dev_nCells, nNonEmptyCells, dev_nNonEmptyCells, originPointIndex, dev_originPointIndex,
-                                neighborTable, &pointersToNeighbors, &totalNeighbors, &totalNeighborsCuda, &totalNeighborsTensor,
-                                &totalQueriesCuda, &totalQueriesTensor, &totalKernelCuda, &totalKernelTensor);
-                    } else {
+                        GPUJoinMainIndex_alt(searchMode, database, dev_database, &DBSIZE, &epsilon, dev_epsilon, index, dev_index,
+                            indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr, minArr, dev_minArr,
+                            nCells, dev_nCells, &nNonEmptyCells, dev_nNonEmptyCells, originPointIndex, dev_originPointIndex,
+                            neighborTable, &pointersToNeighbors, &totalNeighbors, &totalNeighborsCuda, &totalNeighborsTensor,
+                            &totalCandidatesCuda, &totalCandidatesTensor, &totalQueriesCuda, &totalQueriesTensor,
+                            &totalKernelCuda, &totalKernelTensor);
+                    } else { // Using a HEGJoin search mode
                         distanceTableNDGridBatches(searchMode, staticPartition, &DBSIZE, &epsilon, dev_epsilon, database, dev_database,
                                 index, dev_index, indexLookupArr, dev_indexLookupArr, gridCellLookupArr, dev_gridCellLookupArr,
                                 minArr, dev_minArr, nCells, dev_nCells, &nNonEmptyCells, dev_nNonEmptyCells,
@@ -418,9 +436,9 @@ int main(int argc, char * argv[])
         }
     }
 
-    fprintf(stdout, "[RESULT] ~ Total result set size: %lu\n", totalNeighbors + totalNeighborsCPU);
-    fprintf(stdout, "   [RESULT] ~ Total result set size on the GPU: %lu\n", totalNeighbors);
-    fprintf(stdout, "   [RESULT] ~ Total result set size on the CPU: %lu\n", totalNeighborsCPU);
+    // fprintf(stdout, "[RESULT] ~ Total result set size: %lu\n", totalNeighbors + totalNeighborsCPU);
+    // fprintf(stdout, "   [RESULT] ~ Total result set size on the GPU: %lu\n", totalNeighbors);
+    // fprintf(stdout, "   [RESULT] ~ Total result set size on the CPU: %lu\n", totalNeighborsCPU);
 
     #if COUNT_CANDIDATES_GPU
         if (searchMode == SM_HYBRID || searchMode == SM_HYBRID_STATIC)
@@ -477,13 +495,13 @@ int main(int argc, char * argv[])
     delete[] neighborTable;
     delete[] database;
 
-    if(SM_GPU != searchMode)
+    if(searchMode == SM_CPU || searchMode == SM_HYBRID || searchMode == SM_HYBRID_STATIC)
     {
         delete[] A;
     }
 
     cudaFree(dev_epsilon);
-    cudaFree(dev_database);
+    // cudaFree(dev_database);
     cudaFree(dev_index);
     cudaFree(dev_indexLookupArr);
     cudaFree(dev_gridCellLookupArr);

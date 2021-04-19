@@ -7,8 +7,17 @@
 // Number of dimensions to index
 #define NUMINDEXEDDIM 8
 
+// Number of dimensions to convert the points in, used for the tensor cores
+// Should be a multiple of 16
+#define COMPUTE_DIM 16
+
 // Number of GPU threads per block
 #define BLOCKSIZE 256
+
+#define WARP_PER_BLOCK 8
+#define WARP_SIZE 32
+#define TILE_SIZE_HALF 16
+#define POINTS_PER_WARP 16
 
 // Number of GPU streams
 #define GPUSTREAMS 3
@@ -21,8 +30,16 @@
 
 // Note: Super-EGO does not work using double precision
 // TODO should merge the two variables together
-#define DTYPE double // precision used by the GPU component
-#define REAL double  // precision used by Super-EGO
+#define DTYPE_PREC 32
+#define DTYPE float // precision used by the GPU component
+#define REAL float  // precision used by Super-EGO
+
+#define NB_CANDIDATES_TENSOR_MIN 256
+#define NB_CANDIDATES_TENSOR_MAX 32768
+
+#define ILP 1
+
+#define SHORT_CIRCUIT 0
 
 // Used by Super-EGO
 #define MINLEN 32

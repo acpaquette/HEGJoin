@@ -1,6 +1,7 @@
 //precompute direct neighbors with the GPU:
 #include "GPU.h"
 #include "kernel.h"
+#include "kernel_alt.h"
 #include "SortByWorkload.h"
 #include "structs.h"
 #include "params.h"
@@ -50,6 +51,7 @@ bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
     return a.value_at_dim < b.value_at_dim;
 }
 
+
 uint64_t getLinearID_nDimensions2(unsigned int * indexes, unsigned int * dimLen, unsigned int nDimensions) {
     uint64_t index = 0;
 	uint64_t multiplier = 1;
@@ -59,6 +61,33 @@ uint64_t getLinearID_nDimensions2(unsigned int * indexes, unsigned int * dimLen,
 	}
 
 	return index;
+}
+
+
+void fillIdentityMatrix(half** iMatrix)
+{
+    for (int i = 0; i < TILE_SIZE_HALF; ++i)
+    {
+        for (int j = 0; j < TILE_SIZE_HALF; ++j)
+        {
+            if (i == j)
+            {
+                (*iMatrix)[i * TILE_SIZE_HALF + j] = (half)1.0;
+            } else {
+                (*iMatrix)[i * TILE_SIZE_HALF + j] = (half)0.0;
+            }
+        }
+    }
+}
+
+
+#define cudaErrCheck(errCode) { cudaErrCheck_((errCode), __FILE__, __LINE__); }
+void cudaErrCheck_(cudaError_t errCode, const char* file, int line)
+{
+    if (errCode != cudaSuccess)
+    {
+        fprintf(stderr, "[Error] ~ In %s (line %d): %s.\n", file, line, cudaGetErrorString(errCode));
+    }
 }
 
 
@@ -172,7 +201,7 @@ void gridIndexingGPU(
 	}
 
     double tEndAllocGPU = omp_get_wtime();
-    cout << "[INDEX] ~ Time to allocate on the GPU: " << tEndAllocGPU - tStartAllocGPU << "\n\n";
+    cout << "[INDEX] ~ Time to allocate on the GPU: " << tEndAllocGPU - tStartAllocGPU << "\n";
     cout.flush();
 
 
@@ -224,7 +253,7 @@ void gridIndexingGPU(
 	}
 
     double tEndCopyGPU = omp_get_wtime();
-    cout << "[INDEX] ~ Time to copy to the GPU: " << tEndCopyGPU - tStartCopyGPU << "\n\n";
+    cout << "[INDEX] ~ Time to copy to the GPU: " << tEndCopyGPU - tStartCopyGPU << "\n";
     cout.flush();
 
 
@@ -393,6 +422,177 @@ void gridIndexingGPU(
     double tEndIndexGPU = omp_get_wtime();
     cout << "[INDEX] ~ Time to index using the GPU (including allocating and transfering memory): " << tEndIndexGPU - tStartAllocGPU << '\n';
     cout.flush();
+
+}
+
+
+
+
+unsigned long long GPUBatchEst_alt(
+    unsigned int* nbQueryPoints,
+    DTYPE* dev_database,
+    unsigned int* dev_originPointIndex,
+    DTYPE* dev_epsilon,
+    struct grid* dev_grid,
+    unsigned int* dev_gridLookupArr,
+    struct gridCellLookup* dev_gridCellLookupArr,
+    DTYPE* dev_minArr,
+    unsigned int* dev_nCells,
+    unsigned int* dev_nNonEmptyCells,
+    unsigned int* retNumBatches,
+    unsigned int* retGPUBufferSize,
+    std::vector<struct batch>* batches)
+{
+    cudaError_t errCode;
+
+    cout << "[GPU] ~ Estimating batches (alt)\n";
+
+    double sampleRate = 0.10;
+    int offsetRate = 1.0 / sampleRate;
+    cout << "[GPU] ~ Sample rate: " << sampleRate << ", offset: " << offsetRate << '\n';
+
+    unsigned int* N_batchEst = new unsigned int;
+    (*N_batchEst) = (*nbQueryPoints) * sampleRate;
+
+    unsigned int* cnt_batchEst = new unsigned int;
+    (*cnt_batchEst) = 0;
+
+    unsigned int* estimatedResult = new unsigned int[(*N_batchEst)];
+    unsigned int* estimateCandidates = new unsigned int[(*N_batchEst)];
+
+    unsigned int* dev_N_batchEst;
+    cudaErrCheck(cudaMalloc((void**)&dev_N_batchEst, sizeof(unsigned int)));
+    cudaErrCheck(cudaMemcpy(dev_N_batchEst, N_batchEst, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+    unsigned int* dev_cnt_batchEst;
+    cudaErrCheck(cudaMalloc((void**)&dev_cnt_batchEst, sizeof(unsigned int)));
+    cudaErrCheck(cudaMemcpy(dev_cnt_batchEst, cnt_batchEst, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+    unsigned int* dev_sampleOffset;
+    cudaErrCheck(cudaMalloc((void**)&dev_sampleOffset, sizeof(unsigned int)));
+    cudaErrCheck(cudaMemcpy(dev_sampleOffset, &offsetRate, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+    unsigned int* dev_estimatedResult;
+    cudaErrCheck(cudaMalloc((void**)&dev_estimatedResult, (*N_batchEst) * sizeof(unsigned int)));
+
+    unsigned int* dev_nbCandidatesEst;
+    cudaErrCheck(cudaMalloc((void**)&dev_nbCandidatesEst, (*N_batchEst) * sizeof(unsigned int)));
+
+    unsigned int nbBlock = ceil((1.0 * (*N_batchEst)) / (1.0 * BLOCKSIZE));
+    cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+    cout.flush();
+
+    batchEstimatorKernel_alt<<<nbBlock, BLOCKSIZE>>>(dev_N_batchEst, dev_sampleOffset,
+        dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_cnt_batchEst, dev_nNonEmptyCells,
+        dev_estimatedResult, dev_nbCandidatesEst);
+
+    cout << "[GPU] ~ ERROR FROM KERNEL LAUNCH OF BATCH ESTIMATOR: " << cudaGetLastError() << '\n';
+    cout.flush();
+
+    cudaErrCheck(cudaMemcpy(cnt_batchEst, dev_cnt_batchEst, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    cudaErrCheck(cudaMemcpy(estimatedResult, dev_estimatedResult, (*N_batchEst) * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    cudaErrCheck(cudaMemcpy(estimateCandidates, dev_nbCandidatesEst, (*N_batchEst) * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+
+    cout << "[GPU] ~ Result set size for estimating the number of batches (sampled): " << *cnt_batchEst << '\n';
+    cout.flush();
+
+    unsigned int GPUBufferSize = 50000000;
+
+    unsigned long long fullEst = 0;
+    unsigned long long fullEstCandidates = 0;
+    unsigned int* estimatedResultFull = new unsigned int[(*nbQueryPoints)];
+    unsigned int* estimatedCandidatesFull = new unsigned int[(*nbQueryPoints)];
+    unsigned int nbUnestimatedSequences = (*nbQueryPoints) / offsetRate;
+
+    for (int i = 0; i < nbUnestimatedSequences - 1; ++i)
+    {
+        unsigned int nbEstBefore = estimatedResult[i];
+        unsigned int nbEstAfter = estimatedResult[i + 1];
+        unsigned int maxEst = (nbEstBefore < nbEstAfter) ? nbEstAfter : nbEstBefore;
+
+        unsigned int nbCandidatesBefore = estimateCandidates[i];
+        unsigned int nbCandidatesAfter = estimateCandidates[i + 1];
+        unsigned int maxCandidates = (nbCandidatesBefore < nbCandidatesAfter) ? nbCandidatesAfter : nbCandidatesBefore;
+
+        unsigned int estBefore = i * offsetRate;
+        unsigned int estAfter = (i + 1) * offsetRate;
+        estimatedResultFull[estBefore] = nbEstBefore;
+        fullEst += nbEstBefore;
+        estimatedCandidatesFull[estBefore] = nbCandidatesBefore;
+        fullEstCandidates += nbCandidatesBefore;
+
+        for (int j = estBefore + 1; j < estAfter; ++j)
+        {
+            estimatedResultFull[j] = maxEst;
+            fullEst += maxEst;
+            estimatedCandidatesFull[j] = maxCandidates;
+            fullEstCandidates += maxCandidates;
+        }
+    }
+
+    cout << "[GPU] ~ Estimated total result set size: " << fullEst << '\n';
+    cout << "[GPU] ~ Estimated number of candidate points: " << fullEstCandidates << '\n';
+    cout.flush();
+
+    if (fullEst < (GPUBufferSize * GPUSTREAMS))
+    {
+        GPUBufferSize = ceil((1.0 * fullEst) / (1.0 * GPUSTREAMS));
+        cout << "[GPU] ~ Result set size too small, reducing GPUBufferSize to " << GPUBufferSize << '\n';
+        cout.flush();
+    }
+
+    unsigned int batchBegin = 0;
+    unsigned long long runningEst = 0;
+    unsigned long long runningCandidates = 0;
+    // Keeping a 5% margin to avoid a potential buffer overflow due to a wrong estimation of the result set size
+    unsigned int reserveBuffer = GPUBufferSize * 0.05;
+
+    for (unsigned int i = 0; i < (*nbQueryPoints); ++i)
+    {
+        runningEst += estimatedResultFull[i];
+        runningCandidates += estimatedCandidatesFull[i];
+
+        if ((GPUBufferSize - reserveBuffer) <= runningEst)
+        {
+            struct batch newBatch = {batchBegin, i, runningCandidates, runningEst};
+            // fprintf(stdout, "[Batch Est] ~ New batch: begin = %u, end = %u, candidates = %llu, neighbors = %llu\n",
+            //     newBatch.begin, newBatch.end, newBatch.nbCandidates, newBatch.nbNeighborsEst);
+            batches->push_back(newBatch);
+            batchBegin = i;
+            runningEst = 0;
+            runningCandidates = 0;
+        } else {
+            // The last batch is unlikely to pass the above condition, so we force its creation when the end of the dataset is reached
+            if (i == ((*nbQueryPoints) - 1))
+            {
+                struct batch newBatch = {batchBegin, (*nbQueryPoints), runningCandidates, runningEst};
+                batches->push_back(newBatch);
+            }
+        }
+    }
+
+    cout << "[GPU] ~ Total number of batches: " << batches->size() << '\n';
+    cout.flush();
+
+    (*retNumBatches) = batches->size();
+    (*retGPUBufferSize) = GPUBufferSize;
+
+    cudaFree(dev_N_batchEst);
+    cudaFree(dev_cnt_batchEst);
+    cudaFree(dev_sampleOffset);
+    cudaFree(dev_estimatedResult);
+    cudaFree(dev_nbCandidatesEst);
+
+    delete[] estimatedResult;
+    delete[] estimateCandidates;
+    delete[] estimatedResultFull;
+    delete[] estimatedCandidatesFull;
+
+    return fullEst;
+
+
+
 
 }
 
@@ -970,6 +1170,11 @@ void distanceTableNDGridBatches(
         #endif
     }
 	double tendbatchest = omp_get_wtime();
+
+    for (int i = 0; i < batchesVector.size(); ++i)
+    {
+        printf("Batch %d, begin = %d, end = %d\n", i, batchesVector[i].first, batchesVector[i].second);
+    }
 
     cout << "[GPU] ~ Time to estimate batches: " << tendbatchest - tstartbatchest << '\n';
     cout.flush();
@@ -1706,21 +1911,19 @@ void distanceTableNDGridBatches(
 
 void GPUJoinMainIndex_alt(
     int searchMode,
-    ACCUM_TYPE* dataset,
-    ACCUM_TYPE* dev_database,
-    half* dev_databaseHalf,
+    DTYPE* dataset,
+    DTYPE* dev_database,
     unsigned int* nbQueryPoints,
-    ACCUM_TYPE* epsilon,
-    ACCUM_TYPE* dev_epsilon,
+    DTYPE* epsilon,
+    DTYPE* dev_epsilon,
     struct grid* grid,
     struct grid* dev_grid,
     unsigned int* gridLookupArr,
     unsigned int* dev_gridLookupArr,
     struct gridCellLookup* gridCellLookupArr,
     struct gridCellLookup* dev_gridCellLookupArr,
-    ACCUM_TYPE* minArr,
-    ACCUM_TYPE* dev_minArr,
-    half* dev_minArrHalf,
+    DTYPE* minArr,
+    DTYPE* dev_minArr,
     unsigned int* nCells,
     unsigned int* dev_nCells,
     unsigned int* nNonEmptyCells,
@@ -1732,14 +1935,595 @@ void GPUJoinMainIndex_alt(
     uint64_t* totalNeighbors,
     uint64_t* totalNeighborsCuda,
     uint64_t* totalNeighborsTensor,
+    uint64_t* totalCandidatesCuda,
+    uint64_t* totalCandidatesTensor,
     unsigned int* totalQueriesCuda,
     unsigned int* totalQueriesTensor,
     unsigned int* totalKernelsCuda,
     unsigned int* totalKernelsTensor)
 {
 
+    double tFunctionStart = omp_get_wtime();
+
+    cudaError_t errCode;
+
+    half* dev_datasetHalf;
+    if (searchMode == SM_GPU_HALF || searchMode == SM_TENSOR || searchMode == SM_TENSOR_HYBRID || searchMode == SM_TENSOR_HYBRID_HALF2)
+    {
+        errCode = cudaMalloc((void**)&dev_datasetHalf, sizeof(half) * ((*nbQueryPoints) + 15) * COMPUTE_DIM);
+        if (errCode != cudaSuccess)
+        {
+            cout << "[GPU] ~ Error: Alloc datasetHalf -- error with code " << errCode << '\n';
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+            cout.flush();
+        }
+        unsigned int nbBlock = ceil((1.0 * (*nbQueryPoints)) / (1.0 * BLOCKSIZE));
+        convertAndResizeDataset<<<nbBlock, BLOCKSIZE>>>(dev_database, dev_datasetHalf, (*nbQueryPoints));
+    }
+
+    half2* dev_datasetHalf2;
+    if (searchMode == SM_GPU_HALF2 || searchMode == SM_TENSOR_HYBRID_HALF2)
+    {
+        half2* dev_datasetHalf2Tmp;
+        errCode = cudaMalloc((void**)&dev_datasetHalf2Tmp, sizeof(half2) * ((*nbQueryPoints) + 15) * COMPUTE_DIM);
+    	if (errCode != cudaSuccess)
+        {
+    		cout << "[GPU] ~ Error: Alloc datasetHalf2Tmp -- error with code " << errCode << '\n';
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+            cout.flush();
+    	}
+        errCode = cudaMalloc((void**)&dev_datasetHalf2, sizeof(half2) * ((*nbQueryPoints) + 15) * (COMPUTE_DIM / 2));
+    	if (errCode != cudaSuccess)
+        {
+    		cout << "[GPU] ~ Error: Alloc datasetHalf2 -- error with code " << errCode << '\n';
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+            cout.flush();
+    	}
+        unsigned int nbPointsTmp = (*nbQueryPoints + 15) * COMPUTE_DIM;
+        unsigned int nbBlock = ceil((1.0 * nbPointsTmp) / (1.0 * BLOCKSIZE));
+        convertFloatToHalf2<<<nbBlock, BLOCKSIZE>>>(dev_database, dev_datasetHalf2Tmp, dev_datasetHalf2, nbPointsTmp);
+        cudaFree(dev_datasetHalf2Tmp);
+    }
+
+    half* identityMatrix = new half[TILE_SIZE_HALF * TILE_SIZE_HALF];
+    half* dev_identityMatrix;
+    if (searchMode == SM_TENSOR || searchMode == SM_TENSOR_HYBRID || searchMode == SM_TENSOR_HYBRID_HALF2)
+    {
+        fillIdentityMatrix(&identityMatrix);
+        cudaMalloc((void**)&dev_identityMatrix, TILE_SIZE_HALF * TILE_SIZE_HALF * sizeof(half));
+        cudaMemcpy(dev_identityMatrix, identityMatrix, TILE_SIZE_HALF * TILE_SIZE_HALF * sizeof(half), cudaMemcpyHostToDevice);
+    }
+
+    half* dev_minArrHalf;
+    cudaMalloc((void**)&dev_minArrHalf, NUMINDEXEDDIM * sizeof(half));
+    convertMinArr<<<1, 1>>>(dev_minArr, dev_minArrHalf);
 
 
+    unsigned int* totalResultSetCnt = new unsigned int;
+    *totalResultSetCnt = 0;
+
+    unsigned int* cnt = new unsigned int[GPUSTREAMS];
+    unsigned int* dev_cnt;
+    errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS);
+	if (errCode != cudaSuccess)
+    {
+		cout << "[GPU] ~ Error: Alloc cnt -- error with code " << errCode << '\n';
+        cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+        cout.flush();
+	}
+
+    unsigned int* N = new unsigned int[GPUSTREAMS];
+	unsigned int* dev_N;
+	errCode = cudaMalloc((void**)&dev_N, sizeof(unsigned int) * GPUSTREAMS);
+	if (errCode != cudaSuccess)
+    {
+		cout << "[GPU] ~ Error: Alloc dev_N -- error with code " << errCode << '\n';
+        cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+        cout.flush();
+	}
+
+    unsigned int* batchOffset = new unsigned int [GPUSTREAMS];
+	unsigned int* dev_offset;
+	errCode = cudaMalloc((void**)&dev_offset, sizeof(unsigned int) * GPUSTREAMS);
+	if (errCode != cudaSuccess)
+    {
+		cout << "[GPU] ~ Error: Alloc offset -- error with code " << errCode << '\n';
+        cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+        cout.flush();
+	}
+
+    unsigned int * batchNumber = new unsigned int[GPUSTREAMS];
+	unsigned int * dev_batchNumber;
+	errCode = cudaMalloc((void**)&dev_batchNumber, sizeof(unsigned int) * GPUSTREAMS);
+	if (errCode != cudaSuccess)
+    {
+		cout << "[GPU] ~ Error: Alloc batch number -- error with code " << errCode << '\n';
+        cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+        cout.flush();
+	}
+
+    unsigned long long estimatedNeighbors = 0;
+	unsigned int numBatches = 0;
+	unsigned int GPUBufferSize = 0;
+
+    // std::vector< std::pair<unsigned int, unsigned int> > batchesVector;
+    std::vector<struct batch> batchesVector;
+
+	double tstartbatchest = omp_get_wtime();
+    // estimatedNeighbors = GPUBatchEst_v2(searchMode, nbQueryPoints, 1.0, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+    //         dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+    estimatedNeighbors = GPUBatchEst_alt(nbQueryPoints, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+            dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+    double tendbatchest = omp_get_wtime();
+
+    // We do not need this original dataset anymore, as the precisions we used is either half or half2
+    cudaFree(dev_database);
+
+    for (int i = 0; i < batchesVector.size(); ++i)
+    {
+        printf("Batch %d, begin = %d, end = %d\n", i, batchesVector[i].begin, batchesVector[i].end);
+    }
+
+    cout << "[GPU] ~ Time to estimate batches: " << tendbatchest - tstartbatchest << '\n';
+    cout.flush();
+
+    cout << "[GPU] ~ In calling function: Estimated neighbors = " << estimatedNeighbors
+            << ", num. batches = " << numBatches << ", GPU buffer size = " << GPUBufferSize << '\n';
+    cout.flush();
+
+    setQueueIndex(batchesVector[GPUSTREAMS].begin);
+
+    for (int i = 0; i < numBatches; i++)
+    {
+		int *ptr;
+		struct neighborDataPtrs tmpStruct;
+		tmpStruct.dataPtr = ptr;
+		tmpStruct.sizeOfDataArr = 0;
+
+		pointersToNeighbors->push_back(tmpStruct);
+	}
+
+    int* dev_pointIDKey[GPUSTREAMS]; //key
+	int* dev_pointInDistValue[GPUSTREAMS]; //value
+	for (int i = 0; i < GPUSTREAMS; i++)
+	{
+		errCode = cudaMalloc((void **)&dev_pointIDKey[i], 2 * sizeof(int) * GPUBufferSize);
+		if (errCode != cudaSuccess)
+        {
+			cout << "[GPU] ~ CUDA: Got error with code " << errCode << '\n'; //2 means not enough memory
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+            cout.flush();
+		}
+
+		errCode = cudaMalloc((void **)&dev_pointInDistValue[i], 2 * sizeof(int) * GPUBufferSize);
+		if (errCode != cudaSuccess)
+        {
+			cout << "[GPU] ~ CUDA: Got error with code " << errCode << '\n'; //2 means not enough memory
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+            cout.flush();
+		}
+
+	}
+    cout << "[GPU] ~ Allocation pointIDKey and pointInDistValue on the GPU, size = " << 2 * sizeof(int) * GPUBufferSize << '\n';
+    cout.flush();
+
+    int* pointIDKey[GPUSTREAMS]; //key
+	int* pointInDistValue[GPUSTREAMS]; //value
+
+	double tstartpinnedresults = omp_get_wtime();
+    #pragma omp parallel for num_threads(GPUSTREAMS)
+	for (int i = 0; i < GPUSTREAMS; i++)
+	{
+		cudaMallocHost((void **) &pointIDKey[i], 2 * sizeof(int) * GPUBufferSize);
+		cudaMallocHost((void **) &pointInDistValue[i], 2 * sizeof(int) * GPUBufferSize);
+	}
+	double tendpinnedresults = omp_get_wtime();
+
+    cout << "[GPU] ~ Time to allocate pinned memory for results: " << tendpinnedresults - tstartpinnedresults << '\n';
+    cout.flush();
+
+    cout << "[GPU] ~ Memory request for results on GPU (GiB): " << (double)(sizeof(int) * 2 * GPUBufferSize * GPUSTREAMS) / (1024 * 1024 * 1024) << '\n';
+    cout.flush();
+    cout << "[GPU] ~ Memory requested for results in MAIN MEMORY (GiB): " << (double)(sizeof(int) * 2 * GPUBufferSize * GPUSTREAMS) / (1024 * 1024 * 1024) << '\n';
+    cout.flush();
+
+    omp_set_num_threads(GPUSTREAMS);
+
+    cudaStream_t stream[GPUSTREAMS];
+	for (int i = 0; i < GPUSTREAMS; i++)
+    {
+		cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
+	}
+
+    unsigned int datasetSize = *nbQueryPoints;
+    unsigned int batchSize = datasetSize / numBatches;
+	// unsigned int batchesThatHaveOneMore = (*nbQueryPoints) - (batchSize * numBatches); //batch number 0- < this value have one more
+    unsigned int batchesThatHaveOneMore = datasetSize - (batchSize * numBatches);
+    cout << "[GPU] ~ Batches that have one more GPU thread: " << batchesThatHaveOneMore << " batchSize(N): " << batchSize << '\n';
+    cout.flush();
+
+	uint64_t totalResultsLoop = 0;
+
+    unsigned int* batchBegin = new unsigned int[GPUSTREAMS];
+    for (int i = 0; i < GPUSTREAMS; i++)
+    {
+        batchBegin[i] = 0;
+    }
+    unsigned int * dev_batchBegin;
+    errCode = cudaMalloc( (void**)&dev_batchBegin, GPUSTREAMS * sizeof(unsigned int));
+    if (errCode != cudaSuccess)
+    {
+        cout << "[GPU] ~ Error: Alloc queue index -- error with code " << errCode << '\n';
+        cout.flush();
+    }
+
+    uint64_t* nbNeighborsCuda = new uint64_t[GPUSTREAMS];
+    uint64_t* nbNeighborsTensor = new uint64_t[GPUSTREAMS];
+    uint64_t* nbCandidatesCuda = new uint64_t[GPUSTREAMS];
+    uint64_t* nbCandidatesTensor = new uint64_t[GPUSTREAMS];
+    unsigned int* nbQueriesCuda = new unsigned int[GPUSTREAMS];
+    unsigned int* nbQueriesTensor = new unsigned int[GPUSTREAMS];
+    unsigned int* nbKernelsCuda = new unsigned int[GPUSTREAMS];
+    unsigned int* nbKernelsTensor = new unsigned int[GPUSTREAMS];
+
+    for (int i = 0; i < GPUSTREAMS; ++i)
+    {
+        nbNeighborsCuda[i] = 0;
+        nbNeighborsTensor[i] = 0;
+        nbCandidatesCuda[i] = 0;
+        nbCandidatesTensor[i] = 0;
+        nbQueriesCuda[i] = 0;
+        nbQueriesTensor[i] = 0;
+        nbKernelsCuda[i] = 0;
+        nbKernelsTensor[i] = 0;
+    }
+
+    const int tensorBlockSize = WARP_PER_BLOCK * WARP_SIZE;
+
+    // if (searchMode == SM_GPU_HALF || searchMode == SM_GPU_HALF2 || searchMode == SM_TENSOR)
+    // {
+    //
+    // } else {
+        double tStartCompute = omp_get_wtime();
+        #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
+        for (int i = 0; i < numBatches; ++i)
+        {
+            unsigned int tid = omp_get_thread_num();
+
+            bool isTensor = false;
+
+            #if !SILENT_GPU
+                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << '\n';
+                cout.flush();
+            #endif
+
+            errCode = cudaMemcpy( &dev_batchBegin[tid], &batchesVector[i].begin, sizeof(unsigned int), cudaMemcpyHostToDevice );
+            if (errCode != cudaSuccess)
+            {
+                cout << "[GPU] ~ Error: queue index copy to device -- error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+            }
+
+            N[tid] = batchesVector[i].end - batchesVector[i].begin;
+            #if !SILENT_GPU
+                cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
+                cout.flush();
+            #endif
+
+            errCode = cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+    		if (errCode != cudaSuccess)
+            {
+    			cout << "[GPU] ~ Error: N Got error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+
+            cnt[tid] = 0;
+    		errCode = cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+    		if (errCode != cudaSuccess)
+            {
+    			cout << "[GPU] ~ Error: dev_cnt memcpy Got error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+
+            batchOffset[tid] = numBatches; //for the strided
+    		errCode = cudaMemcpyAsync( &dev_offset[tid], &batchOffset[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+    		if (errCode != cudaSuccess)
+            {
+    			cout << "[GPU] ~ Error: dev_offset memcpy Got error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+
+            batchNumber[tid] = i;
+    		errCode = cudaMemcpyAsync( &dev_batchNumber[tid], &batchNumber[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+    		if (errCode != cudaSuccess)
+            {
+    			cout << "[GPU] ~ Error: dev_batchNumber memcpy Got error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+
+            switch(searchMode)
+            {
+                case SM_GPU_HALF:
+                {
+                    nbKernelsCuda[tid]++;
+                    nbQueriesCuda[tid] += N[tid];
+
+                    unsigned int nbBlock = ceil((1.0 * (N[tid])) / (1.0 * BLOCKSIZE));
+                    #if !SILENT_GPU
+                        cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                        cout.flush();
+                    #endif
+
+                    distanceCalculationGridCudaHalf<<< nbBlock, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                        dev_datasetHalf, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+                        dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+
+                    break;
+                }
+                case SM_GPU_HALF2:
+                {
+                    nbKernelsCuda[tid]++;
+                    nbQueriesCuda[tid] += N[tid];
+
+                    unsigned int nbBlock = ceil((1.0 * (N[tid])) / (1.0 * BLOCKSIZE));
+                    #if !SILENT_GPU
+                        cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                        cout.flush();
+                    #endif
+
+                    distanceCalculationGridCudaHalf2<<< nbBlock, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                        dev_datasetHalf2, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+                        dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+
+                    break;
+                }
+                case SM_TENSOR:
+                {
+                    isTensor = true;
+
+                    nbKernelsTensor[tid]++;
+                    nbQueriesTensor[tid] += N[tid];
+
+                    unsigned int nbBlock = ceil(((1.0 * N[tid]) / (1.0 * tensorBlockSize)) * (WARP_SIZE / POINTS_PER_WARP));
+                    #if !SILENT_GPU
+                        cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                        cout.flush();
+                    #endif
+
+                    distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
+                        &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
+                        dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                        dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+
+                    break;
+                }
+                case SM_TENSOR_HYBRID:
+                {
+                    unsigned int nbCandidatesAvg = batchesVector[i].nbCandidates / N[tid];
+                    if (NB_CANDIDATES_TENSOR_MIN < nbCandidatesAvg && nbCandidatesAvg < NB_CANDIDATES_TENSOR_MAX)
+                    {
+                        // Use tensor cores
+                        cout << "[GPU] ~ Using the tensor cores\n" << endl;
+                        isTensor = true;
+
+                        nbKernelsTensor[tid]++;
+                        nbQueriesTensor[tid] += N[tid];
+                        nbCandidatesTensor[tid] += batchesVector[i].nbCandidates;
+
+                        unsigned int nbBlock = ceil(((1.0 * N[tid]) / (1.0 * tensorBlockSize)) * (WARP_SIZE / POINTS_PER_WARP));
+                        #if !SILENT_GPU
+                            cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                            cout.flush();
+                        #endif
+
+                        distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
+                            &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
+                            dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                            dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+
+                        break;
+                    } else {
+                        // Use cuda cores
+                        cout << "[GPU] ~ Using the CUDA cores\n" << endl;
+                        nbKernelsCuda[tid]++;
+                        nbQueriesCuda[tid] += N[tid];
+                        nbCandidatesTensor[tid] += batchesVector[i].nbCandidates;
+
+                        unsigned int nbBlock = ceil((1.0 * (N[tid])) / (1.0 * BLOCKSIZE));
+                        #if !SILENT_GPU
+                            cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                            cout.flush();
+                        #endif
+
+                        distanceCalculationGridCudaHalf<<< nbBlock, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                            dev_datasetHalf, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+                            dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                            dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+
+                    }
+                    break;
+                }
+                case SM_TENSOR_HYBRID_HALF2:
+                {
+                    unsigned int nbCandidatesAvg = batchesVector[i].nbCandidates / N[tid];
+                    if (NB_CANDIDATES_TENSOR_MIN < nbCandidatesAvg && nbCandidatesAvg < NB_CANDIDATES_TENSOR_MAX)
+                    {
+                        // Use tensor cores
+                        cout << "[GPU] ~ Using the tensor cores\n" << endl;
+                        isTensor = true;
+
+                        nbKernelsTensor[tid]++;
+                        nbQueriesTensor[tid] += N[tid];
+                        nbCandidatesTensor[tid] += batchesVector[i].nbCandidates;
+
+                        unsigned int nbBlock = ceil(((1.0 * N[tid]) / (1.0 * tensorBlockSize)) * (WARP_SIZE / POINTS_PER_WARP));
+                        #if !SILENT_GPU
+                            cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                            cout.flush();
+                        #endif
+
+                        distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
+                            &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
+                            dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                            dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                    } else {
+                        // Use cuda cores
+                        cout << "[GPU] ~ Using the CUDA cores\n" << endl;
+                        nbKernelsCuda[tid]++;
+                        nbQueriesCuda[tid] += N[tid];
+                        nbCandidatesCuda[tid] += batchesVector[i].nbCandidates;
+
+                        unsigned int nbBlock = ceil((1.0 * (N[tid])) / (1.0 * BLOCKSIZE));
+                        #if !SILENT_GPU
+                            cout << "[GPU] ~ Total blocks: " << nbBlock << '\n';
+                            cout.flush();
+                        #endif
+
+                        distanceCalculationGridCudaHalf2<<< nbBlock, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                            dev_datasetHalf2, dev_originPointIndex, dev_epsilon, dev_grid, dev_gridLookupArr,
+                            dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                            dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                    }
+                    break;
+                }
+            } // switch
+
+            errCode = cudaGetLastError();
+            #if !SILENT_GPU
+        		cout << "\n\n[GPU] ~ KERNEL LAUNCH RETURN: " << errCode << '\n';
+                cout.flush();
+            #endif
+    		if ( cudaSuccess != cudaGetLastError() )
+            {
+    			cout << "\n\n[GPU] ~ ERROR IN KERNEL LAUNCH. ERROR: " << cudaSuccess << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+
+    		// find the size of the number of results
+    		errCode = cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
+    		if (errCode != cudaSuccess)
+            {
+    			cout << "[GPU] ~ Error: getting cnt from GPU Got error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+            #if !SILENT_GPU
+    		else {
+                cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid] << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+    		}
+            #endif
+
+            if (isTensor)
+            {
+                nbNeighborsTensor[tid] += cnt[tid];
+            } else {
+                nbNeighborsCuda[tid] += cnt[tid];
+            }
+
+            thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
+    		thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
+
+            try {
+    			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+    		} catch(std::bad_alloc &e) {
+    			std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
+                cout.flush();
+    			exit(1);
+    		}
+
+            cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+    		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+
+            cudaStreamSynchronize(stream[tid]);
+
+            double tableconstuctstart = omp_get_wtime();
+    		//set the number of neighbors in the pointer struct:
+    		(*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
+    		(*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
+
+    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
+
+            double tableconstuctend = omp_get_wtime();
+
+            #if !SILENT_GPU
+                cout << "[GPU] ~ Table construct time: " << tableconstuctend - tableconstuctstart << '\n';
+                cout.flush();
+            #endif
+
+    		//add the batched result set size to the total count
+    		totalResultsLoop += cnt[tid];
+
+            #if !SILENT_GPU
+                cout << "[GPU] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n';
+                cout.flush();
+            #endif
+        } // pragma omp
+        double tEndCompute = omp_get_wtime();
+        cout << "[GPU | RESULT] ~ Compute time for the GPU: " << tEndCompute - tStartCompute << '\n';
+    // } // if searchmode
+
+    *totalNeighbors = totalResultsLoop;
+
+    double tFunctionEnd = omp_get_wtime();
+
+
+    double tFreeStart = omp_get_wtime();
+
+	for (int i = 0; i < GPUSTREAMS; i++)
+    {
+		errCode = cudaStreamDestroy(stream[i]);
+		if (errCode != cudaSuccess) {
+			cout << "[GPU] ~ Error: destroying stream" << errCode << '\n';
+            cout.flush();
+		}
+	}
+
+	delete totalResultSetCnt;
+	delete[] cnt;
+	delete[] N;
+	delete[] batchOffset;
+	delete[] batchNumber;
+
+	cudaFree(dev_N);
+	cudaFree(dev_cnt);
+	cudaFree(dev_offset);
+	cudaFree(dev_batchNumber);
+
+	for (int i = 0; i < GPUSTREAMS; i++)
+    {
+		cudaFree(dev_pointIDKey[i]);
+		cudaFree(dev_pointInDistValue[i]);
+
+		cudaFreeHost(pointIDKey[i]);
+		cudaFreeHost(pointInDistValue[i]);
+	}
+
+	cudaFreeHost(pointIDKey);
+	cudaFreeHost(pointInDistValue);
+
+    if (searchMode == SM_GPU_HALF || searchMode == SM_TENSOR || searchMode == SM_TENSOR_HYBRID || searchMode == SM_TENSOR_HYBRID_HALF2)
+    {
+        cudaFree(dev_datasetHalf);
+    }
+    if (searchMode == SM_GPU_HALF2 || searchMode == SM_TENSOR_HYBRID_HALF2)
+    {
+        cudaFree(dev_datasetHalf2);
+    }
+
+	double tFreeEnd = omp_get_wtime();
+
+    cout << "[GPU] ~ Time freeing memory: " << tFreeEnd - tFreeStart << '\n';
+    cout.flush();
 }
 
 

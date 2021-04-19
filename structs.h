@@ -104,4 +104,12 @@ struct schedulingCell{
 };
 
 
+struct batch{
+	unsigned int begin;
+	unsigned int end;
+	uint64_t nbCandidates;
+	uint64_t nbNeighborsEst;
+};
+
+
 #endif
