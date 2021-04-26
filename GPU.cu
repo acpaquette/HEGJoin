@@ -833,7 +833,7 @@ unsigned long long GPUBatchEst_v2(
 
     cout << "[GPU | RESULT] ~ Total estimated workload: " << fullEst << '\n';
 
-    if (searchMode == SM_HYBRID_STATIC)
+    if (searchMode == SM_GPU || searchMode == SM_HYBRID_STATIC)
     {
         // Not enough work to fill at least GPUSTREAMS batches, so reducing GPUBufferSize so the
         // GPU can fully use its GPUSTREAMS streams

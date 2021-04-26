@@ -1439,13 +1439,22 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 
 	for (int i = firstQueryId; i < (firstQueryId + POINTS_PER_WARP); ++i)
 	{
-		unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-		for (int j = 0; j < nbDimsToPage; ++j)
+		// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
+		// for (int j = 0; j < nbDimsToPage; ++j)
+		// {
+		// 	if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+		// 	{
+		// 		sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] =
+		// 			database[ originPointIndex[i] * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
+		// 	}
+		// }
+		unsigned int nbStepsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
+		for (int j = 0; j < nbStepsToPage; ++j)
 		{
-			if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+			if ((j * WARP_SIZE + warp.thread_rank()) < COMPUTE_DIM)
 			{
-				sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] =
-					database[ originPointIndex[i] * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
+				sharedArrayQueryPoint[warpIdInBlock * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()] =
+					dataset[i * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()];
 			}
 		}
 
@@ -1484,20 +1493,45 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 
 						wmma::fill_fragment(secondStepAccumulator, 0.0f);
 
-						unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
+						unsigned int candidateId;
+						if ((warp.thread_rank() / 2) < nbCandidatesLeft)
+						{
+							candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
+						} else {
+							candidateId = 0;
+						}
+						// unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
 
 						for (int n = 0; n < COMPUTE_DIM; n += TILE_SIZE_HALF)
 						{
 							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + (warpIdInBlock * COMPUTE_DIM + n), 0);
 
-							// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-							for (int j = 0; j < nbDimsToPage; ++j)
+							unsigned int nbStepsCandidate = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
+							for (int j = 0; j < TILE_SIZE_HALF; j += 2)
 							{
-								if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+								if (warp.thread_rank() < TILE_SIZE_HALF)
 								{
-									sharedArrayResultFirstStep[sharedArrayResultOffset + warp.thread_rank() * nbDimsToPage + j] =
-										database[candidateId * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
+									unsigned int candidateId = gridLookupArr[k + j];
+								} else {
+									unsigned int candidateId = gridLookupArr[k + j + 1];
 								}
+							}
+
+							// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
+							// for (int j = 0; j < nbDimsToPage; ++j)
+							// {
+							// 	if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+							// 	{
+							// 		sharedArrayResultFirstStep[sharedArrayResultOffset + warp.thread_rank() * nbDimsToPage + j] =
+							// 			database[candidateId * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j]; // problem
+							// 	}
+							// }
+
+							// Should pretty much be equal to 8
+							unsigned int nbDimsCandidateToPage = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
+							for (int j = 0; j < nbDimsCandidateToPage; ++j)
+							{
+
 							}
 
 							wmma::load_matrix_sync(firstStepAccumulator, sharedArrayResultFirstStep + sharedArrayResultOffset, TILE_SIZE_HALF, wmma::mem_row_major);
