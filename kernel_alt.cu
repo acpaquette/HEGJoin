@@ -239,6 +239,48 @@ __device__ void evaluateCell_alt(
 }
 
 
+__device__ void evaluateCellHalf2(
+	unsigned int* nCells,
+	unsigned int* indexes,
+	struct gridCellLookup* gridCellLookupArr,
+	unsigned int* nNonEmptyCells,
+	half2* database,
+	DTYPE* epsilon,
+	struct grid* grid,
+	unsigned int* gridLookupArr,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx,
+	unsigned int* nDCellIDs)
+{
+	// Compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
+	// a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
+	uint64_t calcLinearID = getLinearID_nDimensionsGPUKernelAlt(indexes, nCells, NUMINDEXEDDIM);
+
+	struct gridCellLookup tmp;
+	tmp.gridLinearID = calcLinearID;
+	//find if the cell is non-empty
+	if(thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
+	{
+		//compute the neighbors for the adjacent non-empty cell
+		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr,
+                gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
+		unsigned int GridIndex = resultBinSearch->idx;
+
+		for(int k = grid[GridIndex].indexmin; k <= grid[GridIndex].indexmax; ++k)
+        {
+			#if ILP == 1
+				evalPointHalf2(gridLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx);
+			#else
+				evalPointHalf2ILP(gridLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx);
+			#endif
+		}
+	}
+}
+
+
 __forceinline__ __device__ void evalPoint_alt(
 	unsigned int* gridLookupArr,
 	int k,
@@ -341,6 +383,121 @@ __forceinline__ __device__ void evalPointILP_alt(
 		pointInDistVal[idx] = dataIdx;
 	}
 }
+
+
+__forceinline__ __device__ void evalPointHalf2(
+	unsigned int* gridLookupArr,
+	int k,
+	half2* database,
+	DTYPE* epsilon,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx)
+{
+	unsigned int dataIdx = gridLookupArr[k];
+
+	#if DTYPE_PREC == 16
+		half runningTotalDist = 0.0;
+		for (int i = 0; i < (GPUNUMDIM / 2); ++i)
+		{
+			half2 tmpDistance = __hsub2(__hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]), __hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]));
+			runningTotalDist += __low2half(tmpDistance) + __high2half(tmpDistance);
+		}
+	#else
+		float runningTotalDist = 0.0;
+		for (int i = 0; i < (GPUNUMDIM / 2); ++i)
+		{
+			float2 tmpResult = __half22float2(__hsub2(__hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]), __hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i])));
+			runningTotalDist += tmpResult.x + tmpResult.y;
+		}
+	#endif
+
+    // if(runningTotalDist <= ((*epsilon) * (*epsilon)))
+    #if DTYPE_PREC == 16
+	if(hsqrt(runningTotalDist) <= (*epsilon))
+    #else
+    if(sqrt(runningTotalDist) <= (*epsilon))
+    #endif
+    {
+		unsigned int idx = atomicAdd(cnt, int(1));
+		pointIDKey[idx] = pointIdx;
+		pointInDistVal[idx] = dataIdx;
+	}
+}
+
+
+__forceinline__ __device__ void evalPointHalf2ILP(
+	unsigned int* gridLookupArr,
+	int k,
+	half2* database,
+	DTYPE* epsilon,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx)
+{
+	// unsigned int dataIdx = gridLookupArr[k];
+	// DTYPE runningTotalDist[ILP];
+	//
+	// // const unsigned int unrollSize = ILP;
+	//
+	// #pragma unroll
+	// for (int i = 0; i < ILP; ++i)
+	// {
+	// 	runningTotalDist[i] = 0.0;
+	// }
+	//
+	// for(int i = 0; i < GPUNUMDIM; i += ILP)
+    // {
+	// 	#pragma unroll
+	// 	for (int j = 0; j < ILP && (i + j) < GPUNUMDIM; ++j)
+	// 	{
+	// 		runningTotalDist[j] += (DTYPE)((database[dataIdx * COMPUTE_DIM + i + j] - point[i + j]) * (database[dataIdx * COMPUTE_DIM + i + j] - point[i + j]));
+	// 	}
+	//
+	// 	#if SHORT_CIRCUIT
+	// 		#pragma unroll
+	// 		for (int j = 1; j < ILP; ++j)
+	// 		{
+	// 			runningTotalDist[0] += runningTotalDist[j];
+	// 			runningTotalDist[j] = 0.0;
+	// 		}
+	//
+	// 		#if DTYPE_PREC == 16
+	// 		if (hsqrt(runningTotalDist[0]) > (*epsilon))
+	// 		#else
+	// 		if (sqrt(runningTotalDist[0]) > (*epsilon))
+	// 		#endif
+	// 		{
+	// 			return;
+	// 		}
+	// 	#endif
+	// }
+	//
+	// #if !SHORT_CIRCUIT
+	// 	#pragma unroll
+	// 	for (int i = 1; i < ILP; ++i)
+	// 	{
+	// 		runningTotalDist[0] += runningTotalDist[i];
+	// 	}
+	// #endif
+	//
+    // // if(runningTotalDist <= ((*epsilon) * (*epsilon)))
+    // #if DTYPE_PREC == 16
+	// if(hsqrt(runningTotalDist[0]) <= (*epsilon))
+    // #else
+    // if(sqrt(runningTotalDist[0]) <= (*epsilon))
+    // #endif
+    // {
+	// 	unsigned int idx = atomicAdd(cnt, int(1));
+	// 	pointIDKey[idx] = pointIdx;
+	// 	pointInDistVal[idx] = dataIdx;
+	// }
+}
+
 
 
 //\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\
@@ -493,7 +650,7 @@ __global__ void distanceCalculationBruteForceCuda_half2(
 			for (int j = 0; j < GPUNUMDIM / 2; ++j)
 			{
 				half2 tmpResult = __hsub2(__hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]), __hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]));
-				resultDistance += __lo2half(tmpResult) + __high2half(tmpResult);
+				resultDistance += __low2half(tmpResult) + __high2half(tmpResult);
 			}
 		#else
 			float resultDistance = 0.0;
@@ -919,480 +1076,60 @@ __global__ void distanceCalculationGridCudaHalf2(
     int* pointIDKey,
     int* pointInDistVal)
 {
-
+	// unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	//
+    // if ((*batchSize) <= tid)
+    // {
+    //     return;
+    // }
+	//
+    // // Get the next query point in the "local" queue
+    // unsigned int pointId = atomicAdd(batchBegin, int(1));
+	//
+    // half2 point[GPUNUMDIM / 2];
+    // for (int i = 0; i < GPUNUMDIM; ++i)
+    // {
+    //     point[i] = database[ originPointIndex[pointId] * (GPUNUMDIM / 2) + i ];
+    // }
+	//
+    // // Calculate the coords of the Cell for the point and the min/max ranges in each dimension
+	// unsigned int nDCellIDs[NUMINDEXEDDIM];
+    // unsigned int nDMinCellIDs[NUMINDEXEDDIM];
+	// unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
+	//
+    // for (int i = 0; i < NUMINDEXEDDIM; ++i)
+    // {
+    //     nDCellIDs[i] = (DTYPE)(point[i] - minArr[i]) / (*epsilon);
+	// 	nDMinCellIDs[i] = max(0, nDCellIDs[i] - 1); // Boundary conditions (don't go beyond cell 0)
+	// 	nDMaxCellIDs[i] = min(nCells[i] - 1, nDCellIDs[i] + 1); // Boundary conditions (don't go beyond the maximum number of cells)
+    // }
+	//
+    // unsigned int indexes[NUMINDEXEDDIM];
+    // unsigned int loopRng[NUMINDEXEDDIM];
+	//
+    // for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
+	// 	for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
+	// 	#include "kernelloops.h"
+	// 	{ //beginning of loop body
+	//
+	// 		for (int x = 0; x < NUMINDEXEDDIM; x++)
+	// 		{
+	// 			indexes[x] = loopRng[x];
+	// 		}
+	//
+	// 		evaluateCellHalf2(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, grid,
+	// 				gridLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], nDCellIDs);
+	//
+	// 	} //end loop body
 }
-
-
-
-// Only handle half precision computation for the moment (and accumulation in half or single precision)
-// __global__ void distanceCalculationGridTensor(
-//     unsigned int* batchBegin,
-//     unsigned int* batchSize,
-//     half* database,
-//     unsigned int* originPointIndex,
-//     DTYPE* epsilon,
-//     struct grid* grid,
-//     unsigned int* gridLookupArr,
-//     struct gridCellLookup* gridCellLookupArr,
-//     half* minArr,
-//     unsigned int* nCells,
-//     unsigned int* cnt,
-//     unsigned int* nNonEmptyCells,
-//     int* pointIDKey,
-//     int* pointInDistVal,
-//     half* identityMatrix)
-// {
-// 	// Store the current query point of a warp
-// 	__shared__ half sharedArrayQueryPoints[COMPUTE_DIM * WARP_PER_BLOCK];
-//     // Store the result of the first step (distance between the individual coordinates)
-//     __shared__ half sharedArrayFirstStep[TILE_SIZE_HALF * TILE_SIZE_HALF * WARP_PER_BLOCK];
-//     // Store the result of the second step (actual distance between points)
-//     __shared__ float sharedArrayResSecondStep[TILE_SIZE_HALF * TILE_SIZE_HALF * WARP_PER_BLOCK];
-//
-//     thread_block_tile<WARP_SIZE> warp = tiled_partition<WARP_SIZE>(this_thread_block());
-//     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-//     unsigned int warpId = threadIdx.x / WARP_SIZE;
-//
-// 	unsigned int sharedMemoryOffset = warpId * TILE_SIZE_HALF * TILE_SIZE_HALF;
-//
-// 	unsigned int nDCellIDs[NUMINDEXEDDIM];
-// 	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-// 	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
-//
-// 	unsigned int indexes[NUMINDEXEDDIM];
-// 	unsigned int loopRng[NUMINDEXEDDIM];
-//
-// 	wmma::fragment<wmma::matrix_a, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::row_major> pointsFragment;
-// 	wmma::fragment<wmma::matrix_b, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::col_major> candidatesFragment;
-// 	wmma::fragment<wmma::accumulator, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, float> distanceAccumulatorFragment;
-//
-// 	// For each point to compute per warp
-// 	for (int i = 0; i < POINTS_PER_WARP; ++i)
-// 	{
-// 		// Thread 0 of the warp gets the next point to compute, and shares it with the rest of the warp
-// 		unsigned int pointId;
-// 		if (0 == warp.thread_rank())
-// 		{
-// 			pointId = atomicAdd(batchBegin, int(1));
-// 		}
-// 		pointId = __shfl_sync(0xffffffff, pointId, 0);
-//
-// 		// Copy the query point into shared memory
-// 		unsigned int nbDimToCopy = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-// 		for (int j = 0; j < nbDimToCopy; ++j)
-// 		{
-// 			if (warp.thread_rank() * nbDimToCopy < COMPUTE_DIM)
-// 			{
-// 				sharedArrayQueryPoints[warpId * COMPUTE_DIM + warp.thread_rank() * nbDimToCopy + j] =
-// 					(half)database[ originPointIndex[pointId] * COMPUTE_DIM + warp.thread_rank() * nbDimToCopy + j ];
-// 			}
-// 		}
-// 		warp.sync();
-//
-// 		// Compute the neighboring cells in all indexeded dimensions
-// 		for (int j = 0; j < NUMINDEXEDDIM; ++j)
-// 		{
-// 			nDCellIDs[j] = ((float)sharedArrayQueryPoints[warpId * COMPUTE_DIM + j] - minArr[j]) / (*epsilon);
-// 			nDMinCellIDs[j] = max(0, nDCellIDs[j] - 1);
-// 			nDMaxCellIDs[j] = min(nCells[j] - 1, nDCellIDs[j] + 1);
-// 		}
-//
-// 		// wmma::load_matrix_sync(identityFragment, identityMatrix, TILE_SIZE);
-//
-// 		float resultDistance = 0.0;
-//
-// 		// Iterate over the neighboring cells
-// 		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
-// 			for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
-// 			#include "kernelloops.h"
-// 			{ //beginning of loop body
-// 				for (int x = 0; x < NUMINDEXEDDIM; ++x)
-// 				{
-// 					indexes[x] = loopRng[x];
-// 				}
-//
-// 				uint64_t cellLinearId = getLinearID_nDimensionsGPUKernel(indexes, nCells, NUMINDEXEDDIM);
-// 				struct gridCellLookup tmp;
-// 				tmp.gridLinearID = cellLinearId;
-//
-// 				// Find if the neighboring cell is empty or not
-// 				if(thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
-// 				{
-// 					struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr,
-// 						gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
-// 					unsigned int gridIndex = resultBinSearch->idx;
-//
-// 					// Iterate over the points in the neighboring cell
-// 					// Compute TILE_SIZE candidates by TILE_SIZE (by default, 16 by 16)
-// 					unsigned int nbCandidatesLeft = grid[gridIndex].indexmax - grid[gridIndex].indexmin + 1;
-// 					for (int k = grid[gridIndex].indexmin; k <= grid[gridIndex].indexmax; k += TILE_SIZE_HALF)
-// 					{
-// 						// Set the result distance fragment to 0 for these candidate points
-// 						wmma::fill_fragment(distanceAccumulatorFragment, 0.0f);
-//
-// 						unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
-//
-// 						// Iterate over the number of steps needed to compute the distance in all dimensions
-// 						// Reminder: COMPUTE_DIM is always a multiple of TILE_SIZE
-// 						for (int n = 0; n < COMPUTE_DIM / TILE_SIZE_HALF; ++n)
-// 						{
-// 							// Load the query point from shared memory into the fragment
-// 							// wmma::load_matrix_sync(pointsFragment, sharedArrayQueryPoints + warpId * WARP_SIZE + n * TILE_SIZE, 0);
-//
-// 							// Page the candidate points into shared memory
-// 							// 16 points in 16 dimensions, so a thread pages 8 dimensions of a point
-// 							// Necessary since the candidate are not always coalesced into global memory
-// 							// Directly compute the difference between the query point and the candidate points coordinates
-// 							unsigned int dimOffset = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
-// 							for (int l = 0; l < dimOffset; ++l)
-// 							{
-// 								// sharedArrayFirstStep[sharedMemoryOffset + warp.thread_rank() * dimOffset + l] =
-// 								// 	(COMPUTE_TYPE)(-1.0f) * database[candidateId * COMPUTE_DIM + n * TILE_SIZE + warp.thread_rank() * dimOffset + l];
-// 								sharedArrayFirstStep[sharedMemoryOffset + warp.thread_rank() * dimOffset + l]
-// 									= sharedArrayQueryPoints[warpId * COMPUTE_DIM + n * TILE_SIZE_HALF + (warp.thread_rank() % 2) * dimOffset + l]
-// 									- (half)database[candidateId * COMPUTE_DIM + n * TILE_SIZE_HALF + (warp.thread_rank() % 2) * dimOffset + l];
-// 							}
-// 							warp.sync();
-//
-// 							// Load the candidate points from shared memory into the fragment
-// 							// wmma::load_matrix_sync(tmpAccumulator, sharedArrayFirstStep + sharedMemoryOffset, wmma::mem_row_major);
-//
-// 							// Compute the difference between the coordinates of the query point and the candidate points
-// 							// Use the identity matrix to keep the coordinates of the query point untouched
-// 							// I.e., compute pointsFragment - tmpAccumulator
-// 							// wmma::mma_sync(tmpAccumulator, pointsFragment, identityFragment, tmpAccumulator);
-//
-// 							// Load the difference between the query point and the candidate points coordinates
-// 							// from shared memory into the fragments
-// 							wmma::load_matrix_sync(pointsFragment, sharedArrayFirstStep + sharedMemoryOffset, TILE_SIZE_HALF);
-// 							wmma::load_matrix_sync(candidatesFragment, sharedArrayFirstStep + sharedMemoryOffset, TILE_SIZE_HALF);
-//
-// 							// Accumulate into distanceAccumulatorFragment the running distance between the query point and the candidate points
-// 							wmma::mma_sync(distanceAccumulatorFragment, pointsFragment, candidatesFragment, distanceAccumulatorFragment);
-//
-// 							#if SHORT_CIRCUIT
-// 						oid distanceCalculationGridTensor(
-//     unsigned int* batchBegin,
-//     unsigned int* batchSize,
-//     half* database,
-//     unsigned int* originPointIndex,
-//     DTYPE* epsilon,
-//     struct grid* grid,
-//     unsigned int* gridLookupArr,
-//     struct gridCellLookup* gridCellLookupArr,
-//     half* minArr,
-//     unsigned int* nCells,
-//     unsigned int* cnt,
-//     unsigned int* nNonEmptyCells,
-//     int* pointIDKey,
-//     int* pointInDistVal,
-//     half* identityMatrix)
-// {
-// 	// Store the current query point of a warp
-// 	__shared__ half sharedArrayQueryPoints[COMPUTE_DIM * WARP_PER_BLOCK];
-//     // Store the result of the first step (distance between the individual coordinates)
-//     __shared__ half sharedArrayFirstStep[TILE_SIZE_HALF * TILE_SIZE_HALF * WARP_PER_BLOCK];
-//     // Store the result of the second step (actual distance between points)
-//     __shared__ float sharedArrayResSecondStep[TILE_SIZE_HALF * TILE_SIZE_HALF * WARP_PER_BLOCK];
-//
-//     thread_block_tile<WARP_SIZE> warp = tiled_partition<WARP_SIZE>(this_thread_block());
-//     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-//     unsigned int warpId = threadIdx.x / WARP_SIZE;
-//
-// 	unsigned int sharedMemoryOffset = warpId * TILE_SIZE_HALF * TILE_SIZE_HALF;
-//
-// 	unsigned int nDCellIDs[NUMINDEXEDDIM];
-// 	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-// 	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
-//
-// 	unsigned int indexes[NUMINDEXEDDIM];
-// 	unsigned int loopRng[NUMINDEXEDDIM];
-//
-// 	wmma::fragment<wmma::matrix_a, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::row_major> pointsFragment;
-// 	wmma::fragment<wmma::matrix_b, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::col_major> candidatesFragment;
-// 	wmma::fragment<wmma::accumulator, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, float> distanceAccumulatorFragment;
-//
-// 	// For each point to compute per warp
-// 	for (int i = 0; i < POINTS_PER_WARP; ++i)
-// 	{
-// 		// Thread 0 of the warp gets the next point to compute, and shares it with the rest of the warp
-// 		unsigned int pointId;
-// 		if (0 == warp.thread_rank())
-// 		{
-// 			pointId = atomicAdd(batchBegin, int(1));
-// 		}
-// 		pointId = __shfl_sync(0xffffffff, pointId, 0);
-//
-// 		// Copy the query point into shared memory
-// 		unsigned int nbDimToCopy = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-// 		for (int j = 0; j < nbDimToCopy; ++j)
-// 		{
-// 			if (warp.thread_rank() * nbDimToCopy < COMPUTE_DIM)
-// 			{
-// 				sharedArrayQueryPoints[warpId * COMPUTE_DIM + warp.thread_rank() * nbDimToCopy + j] =
-// 					(half)database[ originPointIndex[pointId] * COMPUTE_DIM + warp.thread_rank() * nbDimToCopy + j ];
-// 			}
-// 		}
-// 		warp.sync();
-//
-// 		// Compute the neighboring cells in all indexeded dimensions
-// 		for (int j = 0; j < NUMINDEXEDDIM; ++j)
-// 		{
-// 			nDCellIDs[j] = ((float)sharedArrayQueryPoints[warpId * COMPUTE_DIM + j] - minArr[j]) / (*epsilon);
-// 			nDMinCellIDs[j] = max(0, nDCellIDs[j] - 1);
-// 			nDMaxCellIDs[j] = min(nCells[j] - 1, nDCellIDs[j] + 1);
-// 		}
-//
-// 		// wmma::load_matrix_sync(identityFragment, identityMatrix, TILE_SIZE);
-//
-// 		float resultDistance = 0.0;
-//
-// 		// Iterate over the neighboring cells
-// 		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
-// 			for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
-// 			#include "kernelloops.h"
-// 			{ //beginning of loop body
-// 				for (int x = 0; x < NUMINDEXEDDIM; ++x)
-// 				{
-// 					indexes[x] = loopRng[x];
-// 				}
-//
-// 				uint64_t cellLinearId = getLinearID_nDimensionsGPUKernel(indexes, nCells, NUMINDEXEDDIM);
-// 				struct gridCellLookup tmp;
-// 				tmp.gridLinearID = cellLinearId;
-//
-// 				// Find if the neighboring cell is empty or not
-// 				if(thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
-// 				{
-// 					struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr,
-// 						gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
-// 					unsigned int gridIndex = resultBinSearch->idx;
-//
-// 					// Iterate over the points in the neighboring cell
-// 					// Compute TILE_SIZE candidates by TILE_SIZE (by default, 16 by 16)
-// 					unsigned int nbCandidatesLeft = grid[gridIndex].indexmax - grid[gridIndex].indexmin + 1;
-// 					for (int k = grid[gridIndex].indexmin; k <= grid[gridIndex].indexmax; k += TILE_SIZE_HALF)
-// 					{
-// 						// Set the result distance fragment to 0 for these candidate points
-// 						wmma::fill_fragment(distanceAccumulatorFragment, 0.0f);
-//
-// 						unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
-//
-// 						// Iterate over the number of steps needed to compute the distance in all dimensions
-// 						// Reminder: COMPUTE_DIM is always a multiple of TILE_SIZE
-// 						for (int n = 0; n < COMPUTE_DIM / TILE_SIZE_HALF; ++n)
-// 						{
-// 							// Load the query point from shared memory into the fragment
-// 							// wmma::load_matrix_sync(pointsFragment, sharedArrayQueryPoints + warpId * WARP_SIZE + n * TILE_SIZE, 0);
-//
-// 							// Page the candidate points into shared memory
-// 							// 16 points in 16 dimensions, so a thread pages 8 dimensions of a point
-// 							// Necessary since the candidate are not always coalesced into global memory
-// 							// Directly compute the difference between the query point and the candidate points coordinates
-// 							unsigned int dimOffset = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
-// 							for (int l = 0; l < dimOffset; ++l)
-// 							{
-// 								// sharedArrayFirstStep[sharedMemoryOffset + warp.thread_rank() * dimOffset + l] =
-// 								// 	(COMPUTE_TYPE)(-1.0f) * database[candidateId * COMPUTE_DIM + n * TILE_SIZE + warp.thread_rank() * dimOffset + l];
-// 								sharedArrayFirstStep[sharedMemoryOffset + warp.thread_rank() * dimOffset + l]
-// 									= sharedArrayQueryPoints[warpId * COMPUTE_DIM + n * TILE_SIZE_HALF + (warp.thread_rank() % 2) * dimOffset + l]
-// 									- (half)database[candidateId * COMPUTE_DIM + n * TILE_SIZE_HALF + (warp.thread_rank() % 2) * dimOffset + l];
-// 							}
-// 							warp.sync();
-//
-// 							// Load the candidate points from shared memory into the fragment
-// 							// wmma::load_matrix_sync(tmpAccumulator, sharedArrayFirstStep + sharedMemoryOffset, wmma::mem_row_major);
-//
-// 							// Compute the difference between the coordinates of the query point and the candidate points
-// 							// Use the identity matrix to keep the coordinates of the query point untouched
-// 							// I.e., compute pointsFragment - tmpAccumulator
-// 							// wmma::mma_sync(tmpAccumulator, pointsFragment, identityFragment, tmpAccumulator);
-//
-// 							// Load the difference between the query point and the candidate points coordinates
-// 							// from shared memory into the fragments
-// 							wmma::load_matrix_sync(pointsFragment, sharedArrayFirstStep + sharedMemoryOffset, TILE_SIZE_HALF);
-// 							wmma::load_matrix_sync(candidatesFragment, sharedArrayFirstStep + sharedMemoryOffset, TILE_SIZE_HALF);
-//
-// 							// Accumulate into distanceAccumulatorFragment the running distance between the query point and the candidate points
-// 							wmma::mma_sync(distanceAccumulatorFragment, pointsFragment, candidatesFragment, distanceAccumulatorFragment);
-//
-// 							#if SHORT_CIRCUIT
-// 								// Store the distance between the query point and the candidate points into shared memory
-// 								wmma::store_matrix_sync(sharedArrayResSecondStep + sharedMemoryOffset, distanceAccumulatorFragment, TILE_SIZE_HALF, wmma::mem_row_major);
-//
-// 								// Extract the distance between the query point and the candidate points
-// 								// These 16 distances are located in the diagonal of the matrix
-// 								int threadsShortCircuit = 0;
-// 								if (warp.thread_rank() < TILE_SIZE && warp.thread_rank() < nbCandidatesLeft)
-// 								{
-// 									resultDistance = sharedArrayResSecondStep[sharedMemoryOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
-//
-// 									// Check if this thread should short-circuit
-// 									int shortCircuit = 0;
-// 									#if DTYPE_PREC == 16
-// 									if (hsqrt(resultDistance) > (*epsilon))
-// 									#else
-// 									if (sqrt(resultDistance) > (*epsilon))
-// 									#endif
-// 									{
-// 										shortCircuit = 1;
-// 									}
-//
-// 									// int nbThreadsShortCircuit = 0;
-// 									// Match if all 16 candidate points short-circuited
-// 									__match_all_sync(__activemask(), shortCircuit, &threadsShortCircuit);
-// 									// If the 16 candidates are beyond epsilon, then break this loop
-// 									// if (nbThreadsShortCircuit)
-// 									// {
-// 									// 	n = COMPUTE_DIM;
-// 									// }
-// 								}
-//
-// 								// Get from thread 0 if the threads that computed the distances short-circuited
-// 								threadsShortCircuit = __shfl_sync(0xffffffff, threadsShortCircuit, 0);
-// 								if (threadsShortCircuit)
-// 								{
-// 									n = COMPUTE_DIM;
-// 								}
-// 							#endif
-// 						} // For steps over the dimensions
-//
-// 						#if SHORT_CIRCUIT
-// 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
-// 							{
-// 								// The distance was already computed on the last short-circuit check
-// 								#if DTYPE_PREC == 16
-// 								if (hsqrt(resultDistance) <= (*epsilon))
-// 								#else
-// 								if (sqrt(resultDistance) <= (*epsilon))
-// 								#endif
-// 								{
-// 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
-// 									pointIDKey[tmpIdx] = originPointIndex[pointId];
-// 									pointInDistVal[tmpIdx] = gridLookupArr[k];
-// 								}
-// 							}
-// 						#else
-// 							// Store the distance between the query point and the candidate points into shared memory
-// 							wmma::store_matrix_sync(sharedArrayResSecondStep + sharedMemoryOffset, distanceAccumulatorFragment, TILE_SIZE_HALF, wmma::mem_row_major);
-//
-// 							// Extract the distance between the query point and the candidate points
-// 							// These 16 distances are located in the diagonal of the matrix
-// 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
-// 							{
-// 								float resultDistance = sharedArrayResSecondStep[sharedMemoryOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
-//
-// 								// Discriminate the two cases, as a different function should be used depending on the precision
-// 								#if DTYPE_PREC == 16
-// 								if (hsqrt(resultDistance) <= (*epsilon))
-// 								#else
-// 								if (sqrt(resultDistance) <= (*epsilon))
-// 								#endif
-// 								{
-// 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
-// 									pointIDKey[tmpIdx] = originPointIndex[pointId];
-// 									pointInDistVal[tmpIdx] = gridLookupArr[k];
-// 								}
-// 							}
-// 						#endif
-//
-// 						nbCandidatesLeft -= TILE_SIZE_HALF;
-// 					} // For candidates in the cell
-// 				} // If the neighoring candidate cell is not empty
-// 			} // End loop body
-// 	} // For the number of query points assigned to this warp
-// } // Kernel		// Store the distance between the query point and the candidate points into shared memory
-// 								wmma::store_matrix_sync(sharedArrayResSecondStep + sharedMemoryOffset, distanceAccumulatorFragment, TILE_SIZE_HALF, wmma::mem_row_major);
-//
-// 								// Extract the distance between the query point and the candidate points
-// 								// These 16 distances are located in the diagonal of the matrix
-// 								int threadsShortCircuit = 0;
-// 								if (warp.thread_rank() < TILE_SIZE && warp.thread_rank() < nbCandidatesLeft)
-// 								{
-// 									resultDistance = sharedArrayResSecondStep[sharedMemoryOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
-//
-// 									// Check if this thread should short-circuit
-// 									int shortCircuit = 0;
-// 									#if DTYPE_PREC == 16
-// 									if (hsqrt(resultDistance) > (*epsilon))
-// 									#else
-// 									if (sqrt(resultDistance) > (*epsilon))
-// 									#endif
-// 									{
-// 										shortCircuit = 1;
-// 									}
-//
-// 									// int nbThreadsShortCircuit = 0;
-// 									// Match if all 16 candidate points short-circuited
-// 									__match_all_sync(__activemask(), shortCircuit, &threadsShortCircuit);
-// 									// If the 16 candidates are beyond epsilon, then break this loop
-// 									// if (nbThreadsShortCircuit)
-// 									// {
-// 									// 	n = COMPUTE_DIM;
-// 									// }
-// 								}
-//
-// 								// Get from thread 0 if the threads that computed the distances short-circuited
-// 								threadsShortCircuit = __shfl_sync(0xffffffff, threadsShortCircuit, 0);
-// 								if (threadsShortCircuit)
-// 								{
-// 									n = COMPUTE_DIM;
-// 								}
-// 							#endif
-// 						} // For steps over the dimensions
-//
-// 						#if SHORT_CIRCUIT
-// 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
-// 							{
-// 								// The distance was already computed on the last short-circuit check
-// 								#if DTYPE_PREC == 16
-// 								if (hsqrt(resultDistance) <= (*epsilon))
-// 								#else
-// 								if (sqrt(resultDistance) <= (*epsilon))
-// 								#endif
-// 								{
-// 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
-// 									pointIDKey[tmpIdx] = originPointIndex[pointId];
-// 									pointInDistVal[tmpIdx] = gridLookupArr[k];
-// 								}
-// 							}
-// 						#else
-// 							// Store the distance between the query point and the candidate points into shared memory
-// 							wmma::store_matrix_sync(sharedArrayResSecondStep + sharedMemoryOffset, distanceAccumulatorFragment, TILE_SIZE_HALF, wmma::mem_row_major);
-//
-// 							// Extract the distance between the query point and the candidate points
-// 							// These 16 distances are located in the diagonal of the matrix
-// 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
-// 							{
-// 								float resultDistance = sharedArrayResSecondStep[sharedMemoryOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
-//
-// 								// Discriminate the two cases, as a different function should be used depending on the precision
-// 								#if DTYPE_PREC == 16
-// 								if (hsqrt(resultDistance) <= (*epsilon))
-// 								#else
-// 								if (sqrt(resultDistance) <= (*epsilon))
-// 								#endif
-// 								{
-// 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
-// 									pointIDKey[tmpIdx] = originPointIndex[pointId];
-// 									pointInDistVal[tmpIdx] = gridLookupArr[k];
-// 								}
-// 							}
-// 						#endif
-//
-// 						nbCandidatesLeft -= TILE_SIZE_HALF;
-// 					} // For candidates in the cell
-// 				} // If the neighoring candidate cell is not empty
-// 			} // End loop body
-// 	} // For the number of query points assigned to this warp
-// } // Kernel
 
 
 
 __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 	unsigned int* batchBegin,
-	unsigned int* batchSize,
+	unsigned int* batchEnd,
 	half* database,
+	unsigned int* nbQueryPoints,
 	unsigned int* originPointIndex,
 	half* identityMatrix,
 	DTYPE* epsilon,
@@ -1437,24 +1174,15 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 	}
 	firstQueryId = __shfl_sync(0xffffffff, firstQueryId, 0);
 
-	for (int i = firstQueryId; i < (firstQueryId + POINTS_PER_WARP); ++i)
+	for (int i = firstQueryId; i < (firstQueryId + POINTS_PER_WARP) && i < (*batchEnd); ++i)
 	{
-		// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-		// for (int j = 0; j < nbDimsToPage; ++j)
-		// {
-		// 	if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
-		// 	{
-		// 		sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] =
-		// 			database[ originPointIndex[i] * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
-		// 	}
-		// }
 		unsigned int nbStepsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
 		for (int j = 0; j < nbStepsToPage; ++j)
 		{
 			if ((j * WARP_SIZE + warp.thread_rank()) < COMPUTE_DIM)
 			{
-				sharedArrayQueryPoint[warpIdInBlock * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()] =
-					dataset[i * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()];
+				sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()] =
+					database[originPointIndex[i] * COMPUTE_DIM + j * WARP_SIZE + warp.thread_rank()];
 			}
 		}
 
@@ -1487,51 +1215,33 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 						gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 					unsigned int gridIndex = resultBinSearch->idx;
 
+					// For all the candidates in the cell, process them 16 by 16
 					for (int k = grid[gridIndex].indexmin; k <= grid[gridIndex].indexmax; k += TILE_SIZE_HALF)
 					{
 						unsigned int nbCandidatesLeft = grid[gridIndex].indexmax - k + 1;
 
 						wmma::fill_fragment(secondStepAccumulator, 0.0f);
 
-						unsigned int candidateId;
-						if ((warp.thread_rank() / 2) < nbCandidatesLeft)
-						{
-							candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
-						} else {
-							candidateId = 0;
-						}
-						// unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
-
+						// For all dimensions of the candidates, process them 16 by 16
 						for (int n = 0; n < COMPUTE_DIM; n += TILE_SIZE_HALF)
 						{
-							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + (warpIdInBlock * COMPUTE_DIM + n), 0);
+							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + warpIdInBlock * COMPUTE_DIM + n, 0);
 
-							unsigned int nbStepsCandidate = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
+							// unsigned int candidateId;
+							thread_block_tile<16> halfWarp = tiled_partition<16>(warp);
+
 							for (int j = 0; j < TILE_SIZE_HALF; j += 2)
 							{
-								if (warp.thread_rank() < TILE_SIZE_HALF)
+								unsigned int candidateId;
+								if ((k + j + halfWarp.meta_group_rank()) < (*nbQueryPoints))
 								{
-									unsigned int candidateId = gridLookupArr[k + j];
+									candidateId = gridLookupArr[k + j + halfWarp.meta_group_rank()];
 								} else {
-									unsigned int candidateId = gridLookupArr[k + j + 1];
+									candidateId = 0;
 								}
-							}
 
-							// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-							// for (int j = 0; j < nbDimsToPage; ++j)
-							// {
-							// 	if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
-							// 	{
-							// 		sharedArrayResultFirstStep[sharedArrayResultOffset + warp.thread_rank() * nbDimsToPage + j] =
-							// 			database[candidateId * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j]; // problem
-							// 	}
-							// }
-
-							// Should pretty much be equal to 8
-							unsigned int nbDimsCandidateToPage = (TILE_SIZE_HALF * TILE_SIZE_HALF) / WARP_SIZE;
-							for (int j = 0; j < nbDimsCandidateToPage; ++j)
-							{
-
+								sharedArrayResultFirstStep[sharedArrayResultOffset + (j + halfWarp.meta_group_rank()) * TILE_SIZE_HALF + halfWarp.thread_rank()] =
+									database[candidateId * COMPUTE_DIM + n + halfWarp.thread_rank()];
 							}
 
 							wmma::load_matrix_sync(firstStepAccumulator, sharedArrayResultFirstStep + sharedArrayResultOffset, TILE_SIZE_HALF, wmma::mem_row_major);
@@ -1578,7 +1288,7 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 									n = COMPUTE_DIM;
 								}
 							#endif
-						}
+						} // for COMPUTE_DIM
 
 						#if SHORT_CIRCUIT
 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
@@ -1591,7 +1301,7 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 								#endif
 								{
 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
-									pointIDKey[tmpIdx] = originPointIndex[pointId];
+									pointIDKey[tmpIdx] = originPointIndex[i];
 									pointInDistVal[tmpIdx] = gridLookupArr[k];
 								}
 							}
@@ -1610,149 +1320,149 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 								{
 									unsigned int tmpIdx = atomicAdd(cnt, int(1));
 									pointIDKey[tmpIdx] = originPointIndex[i];
-									pointInDistVal[tmpIdx] = candidateId;
+									pointInDistVal[tmpIdx] = gridLookupArr[k];
 								}
 							}
 							warp.sync();
 						#endif
-					}
-				}
-			}
-	}
+					} // for candidates
+				} // if non-empty cell
+			} // for neighboring cells
+	} // for query points
 }
 
 
 
-__global__ void distanceCalculationGridTensor_OneStepComputePagingOneQuery(
-	unsigned int* batchBegin,
-	unsigned int* batchSize,
-	half* database,
-	unsigned int* originPointIndex,
-	DTYPE* epsilon,
-	struct grid* grid,
-	unsigned int* gridLookupArr,
-	struct gridCellLookup* gridCellLookupArr,
-	half* minArr,
-	unsigned int* nCells,
-	unsigned int* cnt,
-	unsigned int* nNonEmptyCells,
-	int* pointIDKey,
-	int* pointInDistVal)
-{
-	__shared__ half sharedArrayQueryPoints[WARP_PER_BLOCK * COMPUTE_DIM];
-	__shared__ half sharedArrayResultFirstStep[WARP_PER_BLOCK * TILE_SIZE_HALF * TILE_SIZE_HALF];
-	__shared__ DTYPE sharedArrayResultSecondStep[WARP_PER_BLOCK * TILE_SIZE_HALF * TILE_SIZE_HALF];
-
-	unsigned int warpIdInBlock = threadIdx.x / WARP_SIZE;
-	unsigned int sharedArrayResultOffset = warpIdInBlock * TILE_SIZE_HALF * TILE_SIZE_HALF;
-	unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-	thread_block_tile<WARP_SIZE> warp = tiled_partition<WARP_SIZE>(this_thread_block());
-
-	wmma::fragment<wmma::matrix_a, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::row_major> matrixAFragment;
-	wmma::fragment<wmma::matrix_b, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::col_major> matrixBFragment;
-	wmma::fragment<wmma::accumulator, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, DTYPE> secondStepAccumulator;
-
-	unsigned int nDCellIDs[NUMINDEXEDDIM];
-	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
-	unsigned int indexes[NUMINDEXEDDIM];
-	unsigned int loopRng[NUMINDEXEDDIM];
-
-	unsigned int firstQueryId;
-	if (0 == warp.thread_rank())
-	{
-		firstQueryId = atomicAdd(batchBegin, int(POINTS_PER_WARP));
-	}
-	firstQueryId = __shfl_sync(0xffffffff, firstQueryId, 0);
-
-	for (int i = firstQueryId; i < (firstQueryId + POINTS_PER_WARP); ++i)
-	{
-		unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-		for (int j = 0; j < nbDimsToPage; ++j)
-		{
-			if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
-			{
-				sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] =
-					database[ originPointIndex[i] * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
-			}
-		}
-
-		for (int j = 0; j < NUMINDEXEDDIM; ++j)
-		{
-			nDCellIDs[j] = (sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + j] - minArr[j]) / (half)(*epsilon);
-			nDMinCellIDs[j] = max(0, nDCellIDs[j] - 1);
-			nDMaxCellIDs[j] = min(nCells[j] - 1, nDCellIDs[j] + 1);
-		}
-
-		DTYPE resultDistance = 0.0;
-
-		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
-			for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
-			#include "kernelloops.h"
-			{ //beginning of loop body
-				for (int x = 0; x < NUMINDEXEDDIM; ++x)
-				{
-					indexes[x] = loopRng[x];
-				}
-
-				uint64_t cellLinearId = getLinearID_nDimensionsGPUKernelAlt(indexes, nCells, NUMINDEXEDDIM);
-				struct gridCellLookup tmp;
-				tmp.gridLinearID = cellLinearId;
-
-				// Find if the neighboring cell is empty or not
-				if(thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
-				{
-					struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr,
-						gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
-					unsigned int gridIndex = resultBinSearch->idx;
-
-					for (int k = grid[gridIndex].indexmin; k <= grid[gridIndex].indexmax; k += TILE_SIZE_HALF)
-					{
-						unsigned int nbCandidatesLeft = grid[gridIndex].indexmax - k + 1;
-
-						wmma::fill_fragment(secondStepAccumulator, 0.0f);
-
-						unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
-
-						for (int n = 0; n < COMPUTE_DIM; n += TILE_SIZE_HALF)
-						{
-							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + (warpIdInBlock * COMPUTE_DIM + k), 0);
-
-							// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
-							for (int j = 0; j < nbDimsToPage; ++j)
-							{
-								if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
-								{
-									sharedArrayResultFirstStep[sharedArrayResultOffset + warp.thread_rank() * nbDimsToPage + j] =
-										database[candidateId * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] * (half)-1.0;
-								}
-							}
-							wmma::load_matrix_sync(matrixBFragment, sharedArrayResultFirstStep + sharedArrayResultOffset, TILE_SIZE_HALF);
-
-							wmma::mma_sync(secondStepAccumulator, matrixAFragment, matrixBFragment, secondStepAccumulator);
-						}
-
-						wmma::store_matrix_sync(sharedArrayResultSecondStep + sharedArrayResultOffset, secondStepAccumulator, TILE_SIZE_HALF, wmma::mem_row_major);
-
-						if (warp.thread_rank() < TILE_SIZE_HALF)
-						{
-							resultDistance = sharedArrayResultSecondStep[sharedArrayResultOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
-
-							#if DTYPE_PREC == 16
-							if(hsqrt(resultDistance) <= (*epsilon))
-							#else
-							if(sqrt(resultDistance) <= (*epsilon))
-							#endif
-							{
-								unsigned int tmpIdx = atomicAdd(cnt, int(1));
-								pointIDKey[tmpIdx] = originPointIndex[i];
-								pointInDistVal[tmpIdx] = candidateId;
-							}
-						}
-						warp.sync();
-					}
-				}
-			}
-	}
-}
+// __global__ void distanceCalculationGridTensor_OneStepComputePagingOneQuery(
+// 	unsigned int* batchBegin,
+// 	unsigned int* batchSize,
+// 	half* database,
+// 	unsigned int* originPointIndex,
+// 	DTYPE* epsilon,
+// 	struct grid* grid,
+// 	unsigned int* gridLookupArr,
+// 	struct gridCellLookup* gridCellLookupArr,
+// 	half* minArr,
+// 	unsigned int* nCells,
+// 	unsigned int* cnt,
+// 	unsigned int* nNonEmptyCells,
+// 	int* pointIDKey,
+// 	int* pointInDistVal)
+// {
+// 	__shared__ half sharedArrayQueryPoints[WARP_PER_BLOCK * COMPUTE_DIM];
+// 	__shared__ half sharedArrayResultFirstStep[WARP_PER_BLOCK * TILE_SIZE_HALF * TILE_SIZE_HALF];
+// 	__shared__ DTYPE sharedArrayResultSecondStep[WARP_PER_BLOCK * TILE_SIZE_HALF * TILE_SIZE_HALF];
+//
+// 	unsigned int warpIdInBlock = threadIdx.x / WARP_SIZE;
+// 	unsigned int sharedArrayResultOffset = warpIdInBlock * TILE_SIZE_HALF * TILE_SIZE_HALF;
+// 	unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+//
+// 	thread_block_tile<WARP_SIZE> warp = tiled_partition<WARP_SIZE>(this_thread_block());
+//
+// 	wmma::fragment<wmma::matrix_a, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::row_major> matrixAFragment;
+// 	wmma::fragment<wmma::matrix_b, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, half, wmma::col_major> matrixBFragment;
+// 	wmma::fragment<wmma::accumulator, TILE_SIZE_HALF, TILE_SIZE_HALF, TILE_SIZE_HALF, DTYPE> secondStepAccumulator;
+//
+// 	unsigned int nDCellIDs[NUMINDEXEDDIM];
+// 	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
+// 	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
+// 	unsigned int indexes[NUMINDEXEDDIM];
+// 	unsigned int loopRng[NUMINDEXEDDIM];
+//
+// 	unsigned int firstQueryId;
+// 	if (0 == warp.thread_rank())
+// 	{
+// 		firstQueryId = atomicAdd(batchBegin, int(POINTS_PER_WARP));
+// 	}
+// 	firstQueryId = __shfl_sync(0xffffffff, firstQueryId, 0);
+//
+// 	for (int i = firstQueryId; i < (firstQueryId + POINTS_PER_WARP); ++i)
+// 	{
+// 		unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
+// 		for (int j = 0; j < nbDimsToPage; ++j)
+// 		{
+// 			if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+// 			{
+// 				sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] =
+// 					database[ originPointIndex[i] * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j];
+// 			}
+// 		}
+//
+// 		for (int j = 0; j < NUMINDEXEDDIM; ++j)
+// 		{
+// 			nDCellIDs[j] = (sharedArrayQueryPoints[warpIdInBlock * COMPUTE_DIM + j] - minArr[j]) / (half)(*epsilon);
+// 			nDMinCellIDs[j] = max(0, nDCellIDs[j] - 1);
+// 			nDMaxCellIDs[j] = min(nCells[j] - 1, nDCellIDs[j] + 1);
+// 		}
+//
+// 		DTYPE resultDistance = 0.0;
+//
+// 		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
+// 			for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
+// 			#include "kernelloops.h"
+// 			{ //beginning of loop body
+// 				for (int x = 0; x < NUMINDEXEDDIM; ++x)
+// 				{
+// 					indexes[x] = loopRng[x];
+// 				}
+//
+// 				uint64_t cellLinearId = getLinearID_nDimensionsGPUKernelAlt(indexes, nCells, NUMINDEXEDDIM);
+// 				struct gridCellLookup tmp;
+// 				tmp.gridLinearID = cellLinearId;
+//
+// 				// Find if the neighboring cell is empty or not
+// 				if(thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
+// 				{
+// 					struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr,
+// 						gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
+// 					unsigned int gridIndex = resultBinSearch->idx;
+//
+// 					for (int k = grid[gridIndex].indexmin; k <= grid[gridIndex].indexmax; k += TILE_SIZE_HALF)
+// 					{
+// 						unsigned int nbCandidatesLeft = grid[gridIndex].indexmax - k + 1;
+//
+// 						wmma::fill_fragment(secondStepAccumulator, 0.0f);
+//
+// 						unsigned int candidateId = gridLookupArr[k + (warp.thread_rank() / 2)];
+//
+// 						for (int n = 0; n < COMPUTE_DIM; n += TILE_SIZE_HALF)
+// 						{
+// 							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + (warpIdInBlock * COMPUTE_DIM + k), 0);
+//
+// 							// unsigned int nbDimsToPage = ceil((1.0 * COMPUTE_DIM) / (1.0 * WARP_SIZE));
+// 							for (int j = 0; j < nbDimsToPage; ++j)
+// 							{
+// 								if ((warp.thread_rank() * nbDimsToPage + j) < COMPUTE_DIM)
+// 								{
+// 									sharedArrayResultFirstStep[sharedArrayResultOffset + warp.thread_rank() * nbDimsToPage + j] =
+// 										database[candidateId * COMPUTE_DIM + warp.thread_rank() * nbDimsToPage + j] * (half)-1.0;
+// 								}
+// 							}
+// 							wmma::load_matrix_sync(matrixBFragment, sharedArrayResultFirstStep + sharedArrayResultOffset, TILE_SIZE_HALF);
+//
+// 							wmma::mma_sync(secondStepAccumulator, matrixAFragment, matrixBFragment, secondStepAccumulator);
+// 						}
+//
+// 						wmma::store_matrix_sync(sharedArrayResultSecondStep + sharedArrayResultOffset, secondStepAccumulator, TILE_SIZE_HALF, wmma::mem_row_major);
+//
+// 						if (warp.thread_rank() < TILE_SIZE_HALF)
+// 						{
+// 							resultDistance = sharedArrayResultSecondStep[sharedArrayResultOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
+//
+// 							#if DTYPE_PREC == 16
+// 							if(hsqrt(resultDistance) <= (*epsilon))
+// 							#else
+// 							if(sqrt(resultDistance) <= (*epsilon))
+// 							#endif
+// 							{
+// 								unsigned int tmpIdx = atomicAdd(cnt, int(1));
+// 								pointIDKey[tmpIdx] = originPointIndex[i];
+// 								pointInDistVal[tmpIdx] = candidateId;
+// 							}
+// 						}
+// 						warp.sync();
+// 					}
+// 				}
+// 			}
+// 	}
+// }

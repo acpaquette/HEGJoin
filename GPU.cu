@@ -505,6 +505,8 @@ unsigned long long GPUBatchEst_alt(
     unsigned int* estimatedCandidatesFull = new unsigned int[(*nbQueryPoints)];
     unsigned int nbUnestimatedSequences = (*nbQueryPoints) / offsetRate;
 
+    unsigned int estAfter;
+
     for (int i = 0; i < nbUnestimatedSequences - 1; ++i)
     {
         unsigned int nbEstBefore = estimatedResult[i];
@@ -516,7 +518,7 @@ unsigned long long GPUBatchEst_alt(
         unsigned int maxCandidates = (nbCandidatesBefore < nbCandidatesAfter) ? nbCandidatesAfter : nbCandidatesBefore;
 
         unsigned int estBefore = i * offsetRate;
-        unsigned int estAfter = (i + 1) * offsetRate;
+        estAfter = (i + 1) * offsetRate;
         estimatedResultFull[estBefore] = nbEstBefore;
         fullEst += nbEstBefore;
         estimatedCandidatesFull[estBefore] = nbCandidatesBefore;
@@ -528,6 +530,16 @@ unsigned long long GPUBatchEst_alt(
             fullEst += maxEst;
             estimatedCandidatesFull[j] = maxCandidates;
             fullEstCandidates += maxCandidates;
+        }
+    }
+
+    if (estAfter < (*nbQueryPoints))
+    {
+        // cout << "   COUCOU Y A UN SOUCIS   " << endl;
+        for (int i = estAfter; i < (*nbQueryPoints); ++i)
+        {
+            estimatedResultFull[i] = estimatedResultFull[estAfter - 1];
+            estimatedCandidatesFull[i] = estimatedCandidatesFull[estAfter - 1];
         }
     }
 
@@ -568,6 +580,8 @@ unsigned long long GPUBatchEst_alt(
             {
                 struct batch newBatch = {batchBegin, (*nbQueryPoints), runningCandidates, runningEst};
                 batches->push_back(newBatch);
+                runningEst = 0;
+                runningCandidates = 0;
             }
         }
     }
@@ -2059,10 +2073,10 @@ void GPUJoinMainIndex_alt(
     // We do not need this original dataset anymore, as the precisions we used is either half or half2
     cudaFree(dev_database);
 
-    for (int i = 0; i < batchesVector.size(); ++i)
-    {
-        printf("Batch %d, begin = %d, end = %d\n", i, batchesVector[i].begin, batchesVector[i].end);
-    }
+    // for (int i = 0; i < batchesVector.size(); ++i)
+    // {
+    //     printf("Batch %d, begin = %d, end = %d\n", i, batchesVector[i].begin, batchesVector[i].end);
+    // }
 
     cout << "[GPU] ~ Time to estimate batches: " << tendbatchest - tstartbatchest << '\n';
     cout.flush();
@@ -2153,9 +2167,21 @@ void GPUJoinMainIndex_alt(
     errCode = cudaMalloc( (void**)&dev_batchBegin, GPUSTREAMS * sizeof(unsigned int));
     if (errCode != cudaSuccess)
     {
-        cout << "[GPU] ~ Error: Alloc queue index -- error with code " << errCode << '\n';
+        cout << "[GPU] ~ Error: Alloc batchBegin -- error with code " << errCode << '\n';
         cout.flush();
     }
+
+    unsigned int * dev_batchEnd;
+    errCode = cudaMalloc( (void**)&dev_batchEnd, GPUSTREAMS * sizeof(unsigned int));
+    if (errCode != cudaSuccess)
+    {
+        cout << "[GPU] ~ Error: Alloc batchEnd -- error with code " << errCode << '\n';
+        cout.flush();
+    }
+
+    unsigned int* dev_nbQueryPoints;
+    cudaErrCheck(cudaMalloc( (void**)&dev_nbQueryPoints, sizeof(unsigned int)));
+    cudaErrCheck(cudaMemcpy(dev_nbQueryPoints, nbQueryPoints, sizeof(unsigned int), cudaMemcpyHostToDevice));
 
     uint64_t* nbNeighborsCuda = new uint64_t[GPUSTREAMS];
     uint64_t* nbNeighborsTensor = new uint64_t[GPUSTREAMS];
@@ -2200,7 +2226,15 @@ void GPUJoinMainIndex_alt(
             errCode = cudaMemcpy( &dev_batchBegin[tid], &batchesVector[i].begin, sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
-                cout << "[GPU] ~ Error: queue index copy to device -- error with code " << errCode << '\n';
+                cout << "[GPU] ~ Error: batchBegin copy to device -- error with code " << errCode << '\n';
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+                cout.flush();
+            }
+
+            errCode = cudaMemcpy( &dev_batchEnd[tid], &batchesVector[i].end, sizeof(unsigned int), cudaMemcpyHostToDevice );
+            if (errCode != cudaSuccess)
+            {
+                cout << "[GPU] ~ Error: batchEnd copy to device -- error with code " << errCode << '\n';
                 cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                 cout.flush();
             }
@@ -2298,8 +2332,8 @@ void GPUJoinMainIndex_alt(
                     #endif
 
                     distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
-                        &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
-                        dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                        &dev_batchBegin[tid], &dev_batchEnd[tid], dev_datasetHalf, dev_nbQueryPoints, dev_originPointIndex, dev_identityMatrix,
+                        dev_epsilon, dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
                         dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
 
                     break;
@@ -2324,8 +2358,8 @@ void GPUJoinMainIndex_alt(
                         #endif
 
                         distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
-                            &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
-                            dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                            &dev_batchBegin[tid], &dev_batchEnd[tid], dev_datasetHalf, dev_nbQueryPoints, dev_originPointIndex, dev_identityMatrix,
+                            dev_epsilon, dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
                             dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
 
                         break;
@@ -2370,8 +2404,8 @@ void GPUJoinMainIndex_alt(
                         #endif
 
                         distanceCalculationGridTensor_TwoStepsComputePagingOneQuery<<< nbBlock, tensorBlockSize, 0, stream[tid] >>>(
-                            &dev_batchBegin[tid], &dev_N[tid], dev_datasetHalf, dev_originPointIndex, dev_identityMatrix, dev_epsilon,
-                            dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
+                            &dev_batchBegin[tid], &dev_batchEnd[tid], dev_datasetHalf, dev_nbQueryPoints, dev_originPointIndex, dev_identityMatrix,
+                            dev_epsilon, dev_grid, dev_gridLookupArr, dev_gridCellLookupArr, dev_minArrHalf, dev_nCells, &dev_cnt[tid],
                             dev_nNonEmptyCells, dev_pointIDKey[tid], dev_pointInDistValue[tid]);
                     } else {
                         // Use cuda cores

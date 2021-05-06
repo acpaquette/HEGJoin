@@ -42,6 +42,22 @@ __device__ void evaluateCell_alt(
 	int pointIdx,
 	unsigned int* nDCellIDs);
 
+__device__ void evaluateCellHalf2(
+	unsigned int* nCells,
+	unsigned int* indexes,
+	struct gridCellLookup* gridCellLookupArr,
+	unsigned int* nNonEmptyCells,
+	half2* database,
+	DTYPE* epsilon,
+	struct grid* grid,
+	unsigned int* gridLookupArr,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx,
+	unsigned int* nDCellIDs);
+
 __forceinline__ __device__ void evalPoint_alt(
 	unsigned int* gridLookupArr,
 	int k,
@@ -63,6 +79,30 @@ __forceinline__ __device__ void evalPointILP_alt(
 	int* pointIDKey,
 	int* pointInDistVal,
 	int pointIdx);
+
+__forceinline__ __device__ void evalPointHalf2(
+	unsigned int* gridLookupArr,
+	int k,
+	half2* database,
+	DTYPE* epsilon,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx);
+
+__forceinline__ __device__ void evalPointHalf2ILP(
+	unsigned int* gridLookupArr,
+	int k,
+	half2* database,
+	DTYPE* epsilon,
+	half2* point,
+	unsigned int* cnt,
+	int* pointIDKey,
+	int* pointInDistVal,
+	int pointIdx);
+
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\
 
 __global__ void batchEstimatorKernel_alt(
 	unsigned int* N,
@@ -182,6 +222,7 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 	unsigned int* batchBegin,
 	unsigned int* batchSize,
 	half* database,
+	unsigned int* nbQueryPoints,
 	unsigned int* originPointIndex,
 	half* identityMatrix,
 	DTYPE* epsilon,

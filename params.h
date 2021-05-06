@@ -2,14 +2,14 @@
 #define PARAMS_H
 
 // Input data dimension
-#define GPUNUMDIM 16
+#define GPUNUMDIM 32
 
 // Number of dimensions to index
 #define NUMINDEXEDDIM 8
 
 // Number of dimensions to convert the points in, used for the tensor cores
 // Should be a multiple of 16
-#define COMPUTE_DIM 16
+#define COMPUTE_DIM 32
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
