@@ -2,7 +2,7 @@
 #define PARAMS_H
 
 // Input data dimension
-#define GPUNUMDIM 32
+#define GPUNUMDIM 18
 
 // Number of dimensions to index
 #define NUMINDEXEDDIM 8
