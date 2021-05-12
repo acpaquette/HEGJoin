@@ -124,7 +124,7 @@ __global__ void batchEstimatorKernel_alt(
 	DTYPE point[GPUNUMDIM];
 	for (int i = 0; i < GPUNUMDIM; ++i)
 	{
-		point[i] = database[ originPointIndex[pointId] * COMPUTE_DIM + i ];
+		point[i] = database[ originPointIndex[pointId] * GPUNUMDIM + i ];
 	}
 
 	unsigned int nDCellIDs[NUMINDEXEDDIM];
@@ -173,8 +173,8 @@ __global__ void batchEstimatorKernel_alt(
 
 					for (int l = 0; l < GPUNUMDIM; ++l)
 					{
-						runningTotalDist += (database[dataIdx * COMPUTE_DIM + l]  - point[l])
-								* (database[dataIdx * COMPUTE_DIM + l] - point[l]);
+						runningTotalDist += (database[dataIdx * GPUNUMDIM + l]  - point[l])
+								* (database[dataIdx * GPUNUMDIM + l] - point[l]);
 					}
 
 					#if ACCUM_PREC == 16
