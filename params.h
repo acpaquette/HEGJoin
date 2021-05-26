@@ -2,22 +2,27 @@
 #define PARAMS_H
 
 // Input data dimension
-#define GPUNUMDIM 18
+#define GPUNUMDIM 16
 
 // Number of dimensions to index
-#define NUMINDEXEDDIM 8
+#define NUMINDEXEDDIM 6
 
 // Number of dimensions to convert the points in, used for the tensor cores
 // Should be a multiple of 16
-#define COMPUTE_DIM 32
+#define COMPUTE_DIM 16
+
+// Number of dimensions to convert the points in, used for the half2 precision
+// Should be equal to ceil(GPUNUMDIM / 2)
+#define HALF2_DIM 8
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
 
 #define WARP_PER_BLOCK 8
+#define POINTS_PER_WARP 16
+
 #define WARP_SIZE 32
 #define TILE_SIZE_HALF 16
-#define POINTS_PER_WARP 16
 
 // Number of GPU streams
 #define GPUSTREAMS 3

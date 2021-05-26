@@ -78,20 +78,44 @@ __global__ void convertMinArr(
 }
 
 
+__global__ void convertMinArrHalf2(
+	DTYPE* in,
+	half2* out)
+{
+	for (int i = 0; i < NUMINDEXEDDIM / 2; ++i)
+	{
+		out[i] = __floats2half2_rn(in[i * 2], in[i * 2 + 1]);
+	}
+}
+
+
 __global__ void convertFloatToHalf2(
     float* input,
-    half2* tmp,
+    // half2* tmp,
     half2* output,
     unsigned int nbPoints)
 {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < nbPoints)
     {
-        tmp[tid] = __float2half2_rn(input[tid]);
-    }
-    if (tid < (nbPoints / 2))
-    {
-        output[tid] = __lows2half2(tmp[tid * 2], tmp[tid * 2 + 1]);
+		if (0 == (GPUNUMDIM % 2))
+		{
+			for (int i = 0; i < HALF2_DIM; ++i)
+			{
+				output[tid * HALF2_DIM + i] = __floats2half2_rn(input[tid * GPUNUMDIM + i * 2], input[tid * GPUNUMDIM + i * 2 + 1]);
+			}
+
+			// for (int i = 0; i < GPUNUMDIM; i += 2)
+			// {
+			// 	output[tid * HALF2_DIM + (i / 2)] = __floats2half2_rn(input[tid * GPUNUMDIM + i], input[tid * GPUNUMDIM + i + 1]);
+			// }
+		} else {
+			for (int i = 0; i < (GPUNUMDIM / 2); ++i)
+			{
+				output[tid * HALF2_DIM + i] = __floats2half2_rn(input[tid * GPUNUMDIM + i * 2], input[tid * GPUNUMDIM + i * 2 + 1]);
+			}
+			output[tid * HALF2_DIM + (GPUNUMDIM / 2) + 1] = __floats2half2_rn(input[tid * GPUNUMDIM + GPUNUMDIM - 1], 0.0f);
+		}
     }
 }
 
@@ -400,17 +424,19 @@ __forceinline__ __device__ void evalPointHalf2(
 
 	#if DTYPE_PREC == 16
 		half runningTotalDist = 0.0;
-		for (int i = 0; i < (GPUNUMDIM / 2); ++i)
+		for (int i = 0; i < HALF2_DIM; ++i)
 		{
-			half2 tmpDistance = __hsub2(__hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]), __hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]));
+			half2 tmpDistance = __hsub2(__hmul2(point[i], database[dataIdx * HALF2_DIM + i]),
+										__hmul2(point[i], database[dataIdx * HALF2_DIM + i]));
 			runningTotalDist += __low2half(tmpDistance) + __high2half(tmpDistance);
 		}
 	#else
 		float runningTotalDist = 0.0;
-		for (int i = 0; i < (GPUNUMDIM / 2); ++i)
+		for (int i = 0; i < HALF2_DIM; ++i)
 		{
-			float2 tmpResult = __half22float2(__hsub2(__hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i]), __hmul2(point[i], database[dataIdx * (GPUNUMDIM / 2) + i])));
-			runningTotalDist += tmpResult.x + tmpResult.y;
+			float2 tmpDistance = __half22float2(__hsub2(__hmul2(point[i], database[dataIdx * HALF2_DIM + i]),
+														__hmul2(point[i], database[dataIdx * HALF2_DIM + i])));
+			runningTotalDist += tmpDistance.x + tmpDistance.y;
 		}
 	#endif
 
@@ -439,63 +465,75 @@ __forceinline__ __device__ void evalPointHalf2ILP(
 	int* pointInDistVal,
 	int pointIdx)
 {
-	// unsigned int dataIdx = gridLookupArr[k];
-	// DTYPE runningTotalDist[ILP];
-	//
-	// // const unsigned int unrollSize = ILP;
-	//
-	// #pragma unroll
-	// for (int i = 0; i < ILP; ++i)
-	// {
-	// 	runningTotalDist[i] = 0.0;
-	// }
-	//
-	// for(int i = 0; i < GPUNUMDIM; i += ILP)
-    // {
-	// 	#pragma unroll
-	// 	for (int j = 0; j < ILP && (i + j) < GPUNUMDIM; ++j)
-	// 	{
-	// 		runningTotalDist[j] += (DTYPE)((database[dataIdx * COMPUTE_DIM + i + j] - point[i + j]) * (database[dataIdx * COMPUTE_DIM + i + j] - point[i + j]));
-	// 	}
-	//
-	// 	#if SHORT_CIRCUIT
-	// 		#pragma unroll
-	// 		for (int j = 1; j < ILP; ++j)
-	// 		{
-	// 			runningTotalDist[0] += runningTotalDist[j];
-	// 			runningTotalDist[j] = 0.0;
-	// 		}
-	//
-	// 		#if DTYPE_PREC == 16
-	// 		if (hsqrt(runningTotalDist[0]) > (*epsilon))
-	// 		#else
-	// 		if (sqrt(runningTotalDist[0]) > (*epsilon))
-	// 		#endif
-	// 		{
-	// 			return;
-	// 		}
-	// 	#endif
-	// }
-	//
-	// #if !SHORT_CIRCUIT
-	// 	#pragma unroll
-	// 	for (int i = 1; i < ILP; ++i)
-	// 	{
-	// 		runningTotalDist[0] += runningTotalDist[i];
-	// 	}
-	// #endif
-	//
-    // // if(runningTotalDist <= ((*epsilon) * (*epsilon)))
-    // #if DTYPE_PREC == 16
-	// if(hsqrt(runningTotalDist[0]) <= (*epsilon))
-    // #else
-    // if(sqrt(runningTotalDist[0]) <= (*epsilon))
-    // #endif
-    // {
-	// 	unsigned int idx = atomicAdd(cnt, int(1));
-	// 	pointIDKey[idx] = pointIdx;
-	// 	pointInDistVal[idx] = dataIdx;
-	// }
+	#if ILP > 1
+
+	unsigned int dataIdx = gridLookupArr[k];
+	DTYPE runningTotalDist[ILP / 2];
+
+	// const unsigned int unrollSize = ILP;
+
+	#pragma unroll
+	for (int i = 0; i < ILP / 2; ++i)
+	{
+		runningTotalDist[i] = (DTYPE)0.0;
+	}
+
+	for(int i = 0; i < HALF2_DIM; i += (ILP / 2))
+    {
+		#pragma unroll
+		for (int j = 0; j < (ILP / 2) && (i + j) < HALF2_DIM; ++j)
+		{
+			#if DTYPE_PREC == 16
+				half2 tmpDistance = __hsub2(__hmul2(point[i + j], database[dataIdx * HALF2_DIM + i + j]),
+											__hmul2(point[i + j], database[dataIdx * HALF2_DIM + i + j]));
+				runningTotalDist[j] += __low2half(tmpDistance) + __high2half(tmpDistance);
+			#else
+				float2 tmpDistance = __half22float2(__hsub2(__hmul2(point[i + j], database[dataIdx * HALF2_DIM + i + j]),
+															__hmul2(point[i + j], database[dataIdx * HALF2_DIM + i + j])));
+				runningTotalDist[j] += tmpDistance.x + tmpDistance.y;
+			#endif
+		}
+
+		#if SHORT_CIRCUIT
+			#pragma unroll
+			for (int j = 1; j < (ILP / 2); ++j)
+			{
+				runningTotalDist[0] += runningTotalDist[j];
+				runningTotalDist[j] = (DTYPE)0.0;
+			}
+
+			#if DTYPE_PREC == 16
+			if (hsqrt(runningTotalDist[0]) > (*epsilon))
+			#else
+			if (sqrt(runningTotalDist[0]) > (*epsilon))
+			#endif
+			{
+				return;
+			}
+		#endif
+	}
+
+	#if !SHORT_CIRCUIT
+		#pragma unroll
+		for (int i = 1; i < (ILP / 2); ++i)
+		{
+			runningTotalDist[0] += runningTotalDist[i];
+		}
+	#endif
+
+    // if(runningTotalDist <= ((*epsilon) * (*epsilon)))
+    #if DTYPE_PREC == 16
+	if(hsqrt(runningTotalDist[0]) <= (*epsilon))
+    #else
+    if(sqrt(runningTotalDist[0]) <= (*epsilon))
+    #endif
+    {
+		unsigned int idx = atomicAdd(cnt, int(1));
+		pointIDKey[idx] = pointIdx;
+		pointInDistVal[idx] = dataIdx;
+	}
+
+	#endif
 }
 
 
@@ -637,26 +675,26 @@ __global__ void distanceCalculationBruteForceCuda_half2(
 		return;
 	}
 
-	half2 point[GPUNUMDIM / 2];
-	for (int i = 0; i < GPUNUMDIM / 2; ++i)
+	half2 point[HALF2_DIM];
+	for (int i = 0; i < HALF2_DIM; ++i)
 	{
-		point[i] = database[tid * (GPUNUMDIM / 2) + i];
+		point[i] = database[tid * HALF2_DIM + i];
 	}
 
 	for (int i = 0; i < (*nbQueries); ++i)
 	{
 		#if DTYPE_PREC == 16
 			half resultDistance = 0.0;
-			for (int j = 0; j < GPUNUMDIM / 2; ++j)
+			for (int j = 0; j < HALF2_DIM; ++j)
 			{
-				half2 tmpResult = __hsub2(__hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]), __hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]));
+				half2 tmpResult = __hsub2(__hmul2(point[j], database[i * HALF2_DIM + i]), __hmul2(point[j], database[i * HALF2_DIM + i]));
 				resultDistance += __low2half(tmpResult) + __high2half(tmpResult);
 			}
 		#else
 			float resultDistance = 0.0;
-			for (int j = 0; j < GPUNUMDIM / 2; ++j)
+			for (int j = 0; j < HALF2_DIM; ++j)
 			{
-				half2 tmpResult = __hsub2(__hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]), __hmul2(point[j], database[i * (GPUNUMDIM / 2) + i]));
+				half2 tmpResult = __hsub2(__hmul2(point[j], database[i * HALF2_DIM + i]), __hmul2(point[j], database[i * HALF2_DIM + i]));
 				resultDistance += __low2float(tmpResult) + __high2float(tmpResult);
 			}
 		#endif
@@ -1076,51 +1114,56 @@ __global__ void distanceCalculationGridCudaHalf2(
     int* pointIDKey,
     int* pointInDistVal)
 {
-	// unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-	//
-    // if ((*batchSize) <= tid)
-    // {
-    //     return;
-    // }
-	//
-    // // Get the next query point in the "local" queue
-    // unsigned int pointId = atomicAdd(batchBegin, int(1));
-	//
-    // half2 point[GPUNUMDIM / 2];
-    // for (int i = 0; i < GPUNUMDIM; ++i)
-    // {
-    //     point[i] = database[ originPointIndex[pointId] * (GPUNUMDIM / 2) + i ];
-    // }
-	//
-    // // Calculate the coords of the Cell for the point and the min/max ranges in each dimension
-	// unsigned int nDCellIDs[NUMINDEXEDDIM];
-    // unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-	// unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
-	//
-    // for (int i = 0; i < NUMINDEXEDDIM; ++i)
-    // {
-    //     nDCellIDs[i] = (DTYPE)(point[i] - minArr[i]) / (*epsilon);
-	// 	nDMinCellIDs[i] = max(0, nDCellIDs[i] - 1); // Boundary conditions (don't go beyond cell 0)
-	// 	nDMaxCellIDs[i] = min(nCells[i] - 1, nDCellIDs[i] + 1); // Boundary conditions (don't go beyond the maximum number of cells)
-    // }
-	//
-    // unsigned int indexes[NUMINDEXEDDIM];
-    // unsigned int loopRng[NUMINDEXEDDIM];
-	//
-    // for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
-	// 	for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
-	// 	#include "kernelloops.h"
-	// 	{ //beginning of loop body
-	//
-	// 		for (int x = 0; x < NUMINDEXEDDIM; x++)
-	// 		{
-	// 			indexes[x] = loopRng[x];
-	// 		}
-	//
-	// 		evaluateCellHalf2(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, grid,
-	// 				gridLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], nDCellIDs);
-	//
-	// 	} //end loop body
+	unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if ((*batchSize) <= tid)
+    {
+        return;
+    }
+
+    // Get the next query point in the "local" queue
+    unsigned int pointId = atomicAdd(batchBegin, int(1));
+
+    half2 point[HALF2_DIM];
+    for (int i = 0; i < HALF2_DIM; ++i)
+    {
+        point[i] = database[ originPointIndex[pointId] * HALF2_DIM + i ];
+    }
+
+    // Calculate the coords of the Cell for the point and the min/max ranges in each dimension
+	unsigned int nDCellIDs[NUMINDEXEDDIM];
+    unsigned int nDMinCellIDs[NUMINDEXEDDIM];
+	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
+
+    for (int i = 0; i < NUMINDEXEDDIM; ++i)
+    {
+		if (0 == (i % 2))
+		{
+			nDCellIDs[i] = (DTYPE)(__low2half(point[i / 2]) - minArr[i]) / (*epsilon);
+		} else {
+			nDCellIDs[i] = (DTYPE)(__high2half(point[i / 2]) - minArr[i]) / (*epsilon);
+		}
+		nDMinCellIDs[i] = max(0, nDCellIDs[i] - 1); // Boundary conditions (don't go beyond cell 0)
+		nDMaxCellIDs[i] = min(nCells[i] - 1, nDCellIDs[i] + 1); // Boundary conditions (don't go beyond the maximum number of cells)
+    }
+
+    unsigned int indexes[NUMINDEXEDDIM];
+    unsigned int loopRng[NUMINDEXEDDIM];
+
+    for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
+		for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
+		#include "kernelloops.h"
+		{ //beginning of loop body
+
+			for (int x = 0; x < NUMINDEXEDDIM; x++)
+			{
+				indexes[x] = loopRng[x];
+			}
+
+			evaluateCellHalf2(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, grid,
+					gridLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], nDCellIDs);
+
+		} //end loop body
 }
 
 
@@ -1228,20 +1271,28 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 							wmma::load_matrix_sync(matrixAFragment, sharedArrayQueryPoints + warpIdInBlock * COMPUTE_DIM + n, 0);
 
 							// unsigned int candidateId;
-							thread_block_tile<16> halfWarp = tiled_partition<16>(warp);
+							// thread_block_tile<16> halfWarp = tiled_partition<16>(warp);
+							unsigned int halfWarpId = warp.thread_rank() / 16;
+							unsigned int halfWarpThreadId = warp.thread_rank() % 16;
 
 							for (int j = 0; j < TILE_SIZE_HALF; j += 2)
 							{
 								unsigned int candidateId;
-								if ((k + j + halfWarp.meta_group_rank()) < (*nbQueryPoints))
+								// if ((k + j + halfWarp.meta_group_rank()) < (*nbQueryPoints))
+								// {
+								// 	candidateId = gridLookupArr[k + j + halfWarp.meta_group_rank()];
+								// } else {
+								// 	candidateId = 0;
+								// }
+								if ((k + j + halfWarpId) < (*nbQueryPoints))
 								{
-									candidateId = gridLookupArr[k + j + halfWarp.meta_group_rank()];
+									candidateId = gridLookupArr[k + j + halfWarpId];
 								} else {
 									candidateId = 0;
 								}
 
-								sharedArrayResultFirstStep[sharedArrayResultOffset + (j + halfWarp.meta_group_rank()) * TILE_SIZE_HALF + halfWarp.thread_rank()] =
-									database[candidateId * COMPUTE_DIM + n + halfWarp.thread_rank()];
+								sharedArrayResultFirstStep[sharedArrayResultOffset + (j + halfWarpId) * TILE_SIZE_HALF + halfWarpThreadId] =
+									database[candidateId * COMPUTE_DIM + n + halfWarpThreadId];
 							}
 
 							wmma::load_matrix_sync(firstStepAccumulator, sharedArrayResultFirstStep + sharedArrayResultOffset, TILE_SIZE_HALF, wmma::mem_row_major);

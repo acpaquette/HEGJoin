@@ -20,9 +20,13 @@ __global__ void convertMinArr(
 	DTYPE* in,
 	half* out);
 
+__global__ void convertMinArrHalf2(
+	DTYPE* in,
+	half2* out);
+
 __global__ void convertFloatToHalf2(
     float* input,
-    half2* tmp,
+    // half2* tmp,
     half2* output,
     unsigned int nbPoints);
 

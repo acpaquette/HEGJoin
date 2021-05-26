@@ -1976,33 +1976,36 @@ void GPUJoinMainIndex_alt(
     }
 
     half2* dev_datasetHalf2;
+    // half2* dev_minArrHalf2;
     if (searchMode == SM_GPU_HALF2 || searchMode == SM_TENSOR_HYBRID_HALF2)
     {
-        half2* dev_datasetHalf2Tmp;
-        errCode = cudaMalloc((void**)&dev_datasetHalf2Tmp, sizeof(half2) * ((*nbQueryPoints) + 15) * COMPUTE_DIM);
-    	if (errCode != cudaSuccess)
-        {
-    		cout << "[GPU] ~ Error: Alloc datasetHalf2Tmp -- error with code " << errCode << '\n';
-            cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
-            cout.flush();
-    	}
-        errCode = cudaMalloc((void**)&dev_datasetHalf2, sizeof(half2) * ((*nbQueryPoints) + 15) * (COMPUTE_DIM / 2));
+        errCode = cudaMalloc((void**)&dev_datasetHalf2, sizeof(half2) * (*nbQueryPoints) * HALF2_DIM);
     	if (errCode != cudaSuccess)
         {
     		cout << "[GPU] ~ Error: Alloc datasetHalf2 -- error with code " << errCode << '\n';
             cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
             cout.flush();
     	}
-        unsigned int nbPointsTmp = (*nbQueryPoints + 15) * COMPUTE_DIM;
+        unsigned int nbPointsTmp = (*nbQueryPoints);
         unsigned int nbBlock = ceil((1.0 * nbPointsTmp) / (1.0 * BLOCKSIZE));
-        convertFloatToHalf2<<<nbBlock, BLOCKSIZE>>>(dev_database, dev_datasetHalf2Tmp, dev_datasetHalf2, nbPointsTmp);
-        cudaFree(dev_datasetHalf2Tmp);
+        convertFloatToHalf2<<<nbBlock, BLOCKSIZE>>>(dev_database, dev_datasetHalf2, nbPointsTmp);
+        // cudaFree(dev_datasetHalf2Tmp);
+
+        // errCode = cudaMalloc((void**)&dev_minArrHalf2, sizeof(half2) * (NUMINDEXEDDIM / 2));
+    	// if (errCode != cudaSuccess)
+        // {
+    	// 	cout << "[GPU] ~ Error: Alloc minArrHalf2 -- error with code " << errCode << '\n';
+        //     cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
+        //     cout.flush();
+    	// }
+        // convertMinArrHalf2<<<1, 1>>>(dev_minArr, dev_minArrHalf2);
     }
 
-    half* identityMatrix = new half[TILE_SIZE_HALF * TILE_SIZE_HALF];
+    half* identityMatrix;
     half* dev_identityMatrix;
     if (searchMode == SM_TENSOR || searchMode == SM_TENSOR_HYBRID || searchMode == SM_TENSOR_HYBRID_HALF2)
     {
+        identityMatrix = new half[TILE_SIZE_HALF * TILE_SIZE_HALF];
         fillIdentityMatrix(&identityMatrix);
         cudaMalloc((void**)&dev_identityMatrix, TILE_SIZE_HALF * TILE_SIZE_HALF * sizeof(half));
         cudaMemcpy(dev_identityMatrix, identityMatrix, TILE_SIZE_HALF * TILE_SIZE_HALF * sizeof(half), cudaMemcpyHostToDevice);
@@ -2011,7 +2014,6 @@ void GPUJoinMainIndex_alt(
     half* dev_minArrHalf;
     cudaMalloc((void**)&dev_minArrHalf, NUMINDEXEDDIM * sizeof(half));
     convertMinArr<<<1, 1>>>(dev_minArr, dev_minArrHalf);
-
 
     unsigned int* totalResultSetCnt = new unsigned int;
     *totalResultSetCnt = 0;
@@ -2153,7 +2155,7 @@ void GPUJoinMainIndex_alt(
     unsigned int batchSize = datasetSize / numBatches;
 	// unsigned int batchesThatHaveOneMore = (*nbQueryPoints) - (batchSize * numBatches); //batch number 0- < this value have one more
     unsigned int batchesThatHaveOneMore = datasetSize - (batchSize * numBatches);
-    cout << "[GPU] ~ Batches that have one more GPU thread: " << batchesThatHaveOneMore << " batchSize(N): " << batchSize << '\n';
+    cout << "[GPU] ~ Batches that have one more GPU thread: " << batchesThatHaveOneMore << " batchSize(N): " << batchSize << "\n\n";
     cout.flush();
 
 	uint64_t totalResultsLoop = 0;

@@ -4,7 +4,7 @@ CUDAOBJECTS = SortByWorkload.o GPU.o kernel.o kernel_alt.o main.o
 EGOSOURCES = multiThreadJoin.cpp Util.cpp Point.cpp
 EGOBJECTS = Point.o Util.o MultiThreadJoin.o
 CC = nvcc
-CXX = g++ -g
+CXX = g++
 EXECUTABLE = main
 
 FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -arch=compute_86 -code=sm_86 -lcuda -lineinfo -I/home/benoit/research/boost_1_75_0
