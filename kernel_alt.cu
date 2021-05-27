@@ -1332,8 +1332,8 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 								}
 
 								// Get from thread 0 if the threads that computed the distances short-circuited
-								nbThreadsShortCircuit = __shfl_sync(0xffffffff, threadsShortCircuit, 0);
-								if (threadsShortCircuit)
+								nbThreadsShortCircuit = __shfl_sync(0xffffffff, nbThreadsShortCircuit, 0);
+								if (nbThreadsShortCircuit)
 								{
 									// Break the loop iterating over the dimensions of the current candidates
 									n = COMPUTE_DIM;
