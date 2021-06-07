@@ -13,13 +13,13 @@
 
 // Number of dimensions to convert the points in, used for the half2 precision
 // Should be equal to ceil(GPUNUMDIM / 2)
-#define HALF2_DIM 8
+#define HALF2_DIM 45
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
 
-#define WARP_PER_BLOCK 8
-#define POINTS_PER_WARP 16
+#define WARP_PER_BLOCK 1
+#define POINTS_PER_WARP 1
 
 #define WARP_SIZE 32
 #define TILE_SIZE_HALF 16
@@ -44,7 +44,7 @@
 
 #define ILP 1
 
-#define SHORT_CIRCUIT 0
+#define SHORT_CIRCUIT 1
 
 // Used by Super-EGO
 #define MINLEN 32

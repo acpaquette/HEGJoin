@@ -1361,7 +1361,8 @@ __global__ void distanceCalculationGridTensor_TwoStepsComputePagingOneQuery(
 
 							if (warp.thread_rank() < TILE_SIZE_HALF && warp.thread_rank() < nbCandidatesLeft)
 							{
-								resultDistance = sharedArrayResultSecondStep[sharedArrayResultOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
+								// resultDistance = sharedArrayResultSecondStep[sharedArrayResultOffset + warp.thread_rank() * TILE_SIZE_HALF + warp.thread_rank()];
+								resultDistance = sharedArrayResultSecondStep[sharedArrayResultOffset + warp.thread_rank()];
 
 								#if DTYPE_PREC == 16
 								if(hsqrt(resultDistance) <= (*epsilon))

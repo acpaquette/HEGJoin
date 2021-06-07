@@ -1216,7 +1216,7 @@ void distanceTableNDGridBatches(
     }
     // }
 
-// setQueueIndex(0);
+    // setQueueIndex(0);
 
 	/////////////////////////////////////////////////////////
 	//END BATCH ESTIMATOR
