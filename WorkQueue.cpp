@@ -104,13 +104,15 @@ std::pair<unsigned int, unsigned int> getBatchFromQueueCPU(
                 begin = max(queueIndex, queueIndexCPU - batchSize);
                 end = queueIndexCPU;
                 queueIndexCPU = begin;
-            }else{
+            }
+            else {
                 begin = 0;
                 end = 0;
                 queueIndexCPU = 0;
             }
         }
-    }else{
+    }
+    else {
         begin = 1;
         end = 0;
     }

@@ -19,10 +19,10 @@ using namespace cooperative_groups;
 
 __device__ void print(unsigned int tid, unsigned int value)
 {
-	if(0 == tid)
-	{
-		printf("threadIdx.x 0, value = %d\n", value);
-	}
+		if(0 == tid)
+		{
+				printf("threadIdx.x 0, value = %d\n", value);
+		}
 }
 
 
@@ -41,28 +41,28 @@ __global__ void kernelIndexComputeNonemptyCells(
 	unsigned int * databaseVal,
 	bool enumerate)
 {
-	unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
+		unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
 
-	if(*N <= tid)
-	{
-		return;
-	}
+		if(*N <= tid)
+		{
+				return;
+		}
 
-	unsigned int pointID = tid * GPUNUMDIM;
+		unsigned int pointID = tid * GPUNUMDIM;
 
-	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
-	for (int j = 0; j < NUMINDEXEDDIM; j++)
-	{
-		tmpNDCellIdx[j] = ((database[pointID + j] - minArr[j]) / (*epsilon));
-	}
-	uint64_t linearID = getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
+		unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
+		for (int j = 0; j < NUMINDEXEDDIM; j++)
+		{
+				tmpNDCellIdx[j] = ((database[pointID + j] - minArr[j]) / (*epsilon));
+		}
+		uint64_t linearID = getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
 
-	pointCellArr[tid] = linearID;
+		pointCellArr[tid] = linearID;
 
-	if(enumerate)
-	{
-		databaseVal[tid] = tid;
-	}
+		if(enumerate)
+		{
+				databaseVal[tid] = tid;
+		}
 }
 
 
@@ -85,62 +85,61 @@ __global__ void sortByWorkLoadGlobal(
 		schedulingCell * sortedCells)
 {
 
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if(*nNonEmptyCells <= tid)
-	{
-		return;
-	}
+		if(*nNonEmptyCells <= tid)
+		{
+				return;
+		}
 
-	unsigned int cell = gridCellLookupArr[tid].idx;
-	unsigned int nbNeighborPoints = 0;
-	unsigned int tmpId = indexLookupArr[ index[cell].indexmin ];
+		unsigned int cell = gridCellLookupArr[tid].idx;
+		unsigned int nbNeighborPoints = 0;
+		unsigned int tmpId = indexLookupArr[ index[cell].indexmin ];
 
-	DTYPE point[GPUNUMDIM];
-	for(int i = 0; i < GPUNUMDIM; ++i)
-	{
-		point[i] = database[tmpId * GPUNUMDIM + i];
-	}
+		DTYPE point[GPUNUMDIM];
+		for(int i = 0; i < GPUNUMDIM; ++i)
+		{
+				point[i] = database[tmpId * GPUNUMDIM + i];
+		}
 
-	unsigned int nDCellIDs[NUMINDEXEDDIM];
+		unsigned int nDCellIDs[NUMINDEXEDDIM];
 
-	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
+		unsigned int nDMinCellIDs[NUMINDEXEDDIM];
+		unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 
-	for(int n = 0; n < NUMINDEXEDDIM; n++)
-	{
-		nDCellIDs[n] = (point[n] - minArr[n]) / (*epsilon);
-		nDMinCellIDs[n] = max(0, nDCellIDs[n] - 1);;
-		nDMaxCellIDs[n] = min(nCells[n] - 1, nDCellIDs[n] + 1);
-	}
+		for(int n = 0; n < NUMINDEXEDDIM; n++)
+		{
+				nDCellIDs[n] = (point[n] - minArr[n]) / (*epsilon);
+				nDMinCellIDs[n] = max(0, nDCellIDs[n] - 1);;
+				nDMaxCellIDs[n] = min(nCells[n] - 1, nDCellIDs[n] + 1);
+		}
 
-	unsigned int indexes[NUMINDEXEDDIM];
-	unsigned int loopRng[NUMINDEXEDDIM];
+		unsigned int indexes[NUMINDEXEDDIM];
+		unsigned int loopRng[NUMINDEXEDDIM];
 
-	// for (loopRng[0] = rangeFilteredCellIdsMin[0]; loopRng[0] <= rangeFilteredCellIdsMax[0]; loopRng[0]++)
-	// 	for (loopRng[1] = rangeFilteredCellIdsMin[1]; loopRng[1] <= rangeFilteredCellIdsMax[1]; loopRng[1]++)
-	for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
+		// for (loopRng[0] = rangeFilteredCellIdsMin[0]; loopRng[0] <= rangeFilteredCellIdsMax[0]; loopRng[0]++)
+		// 	for (loopRng[1] = rangeFilteredCellIdsMin[1]; loopRng[1] <= rangeFilteredCellIdsMax[1]; loopRng[1]++)
+		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
 		for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
 		#include "kernelloops.h"
 		{
-			for (int x = 0; x < NUMINDEXEDDIM; x++){
-				indexes[x] = loopRng[x];
-			}
+				for (int x = 0; x < NUMINDEXEDDIM; x++){
+						indexes[x] = loopRng[x];
+				}
 
-			uint64_t cellID = getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
-			struct gridCellLookup tmp;
-			tmp.gridLinearID = cellID;
-			if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
-			{
-				struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
-				unsigned int GridIndex = resultBinSearch->idx;
-				nbNeighborPoints += index[GridIndex].indexmax - index[GridIndex].indexmin + 1;
-			}
+				uint64_t cellID = getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
+				struct gridCellLookup tmp;
+				tmp.gridLinearID = cellID;
+				if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
+				{
+						struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
+						unsigned int GridIndex = resultBinSearch->idx;
+						nbNeighborPoints += index[GridIndex].indexmax - index[GridIndex].indexmin + 1;
+				}
 		}
 
-	sortedCells[tid].nbPoints = nbNeighborPoints;
-	sortedCells[tid].cellId = cell;
-
+		sortedCells[tid].nbPoints = nbNeighborPoints;
+		sortedCells[tid].cellId = cell;
 }
 
 

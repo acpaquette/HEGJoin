@@ -816,74 +816,73 @@ void distanceTableNDGridBatches(
         uint64_t * totalNeighbors,
         unsigned int * nbQueriesGPU)
 {
+    double tKernelResultsStart = omp_get_wtime();
 
-	double tKernelResultsStart = omp_get_wtime();
+  	//CUDA error code:
+  	cudaError_t errCode;
 
-	//CUDA error code:
-	cudaError_t errCode;
-
-	cout << "\n[GPU] ~ Sometimes the GPU will error on a previous execution and you won't know. \n[GPU] ~ Last error start of function: " << cudaGetLastError() << '\n';
+  	cout << "\n[GPU] ~ Sometimes the GPU will error on a previous execution and you won't know. \n[GPU] ~ Last error start of function: " << cudaGetLastError() << '\n';
     cout.flush();
 
 
 
-	///////////////////////////////////
-	//COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
-	///////////////////////////////////
+  	///////////////////////////////////
+  	//COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
+  	///////////////////////////////////
 
-	//total size of the result set as it's batched
-	//this isnt sent to the GPU
-	unsigned int * totalResultSetCnt = new unsigned int;
-	*totalResultSetCnt = 0;
+  	//total size of the result set as it's batched
+  	//this isnt sent to the GPU
+  	unsigned int * totalResultSetCnt = new unsigned int;
+  	*totalResultSetCnt = 0;
 
-	//count values - for an individual kernel launch
-	//need different count values for each stream
-	unsigned int * cnt;
-	cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
-	*cnt = 0;
+  	//count values - for an individual kernel launch
+  	//need different count values for each stream
+  	unsigned int * cnt;
+  	cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
+  	*cnt = 0;
 
-	unsigned int * dev_cnt;
-	dev_cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
-	*dev_cnt = 0;
+  	unsigned int * dev_cnt;
+  	dev_cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
+  	*dev_cnt = 0;
 
-	//allocate on the device
-	errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS);
-	if (errCode != cudaSuccess)
+  	//allocate on the device
+  	errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS);
+  	if (errCode != cudaSuccess)
     {
 		cout << "[GPU] ~ Error: Alloc cnt -- error with code " << errCode << '\n';
         cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
         cout.flush();
-	}
+  	}
 
-	///////////////////////////////////
-	//END COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
-	///////////////////////////////////
+  	///////////////////////////////////
+  	//END COUNT VALUES -- RESULT SET SIZE FOR EACH KERNEL INVOCATION
+  	///////////////////////////////////
 
 
 
-	////////////////////////////////////
-	//NUMBER OF THREADS PER GPU STREAM
-	////////////////////////////////////
+  	////////////////////////////////////
+  	//NUMBER OF THREADS PER GPU STREAM
+  	////////////////////////////////////
 
-	//THE NUMBER OF THREADS THAT ARE LAUNCHED IN A SINGLE KERNEL INVOCATION
-	//CAN BE FEWER THAN THE NUMBER OF ELEMENTS IN THE DATABASE IF MORE THAN 1 BATCH
-	unsigned int * N = new unsigned int[GPUSTREAMS];
+  	//THE NUMBER OF THREADS THAT ARE LAUNCHED IN A SINGLE KERNEL INVOCATION
+  	//CAN BE FEWER THAN THE NUMBER OF ELEMENTS IN THE DATABASE IF MORE THAN 1 BATCH
+  	unsigned int * N = new unsigned int[GPUSTREAMS];
 
-	unsigned int * dev_N;
-	// dev_N = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
+  	unsigned int * dev_N;
+  	// dev_N = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
 
-	//allocate on the device
-	errCode = cudaMalloc((void**)&dev_N, sizeof(unsigned int) * GPUSTREAMS);
-	if (errCode != cudaSuccess)
+  	//allocate on the device
+  	errCode = cudaMalloc((void**)&dev_N, sizeof(unsigned int) * GPUSTREAMS);
+  	if (errCode != cudaSuccess)
     {
 		cout << "[GPU] ~ Error: Alloc dev_N -- error with code " << errCode << '\n';
         cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
         cout.flush();
 	}
 
-	////////////////////////////////////
-	//NUMBER OF THREADS PER GPU STREAM
-	////////////////////////////////////
+  	////////////////////////////////////
+  	//NUMBER OF THREADS PER GPU STREAM
+  	////////////////////////////////////
 
 
 
@@ -922,20 +921,20 @@ void distanceTableNDGridBatches(
         cout.flush();
 	}
 
-	////////////////////////////////////
-	//END OFFSET INTO THE DATABASE FOR BATCHING THE RESULTS
-	//BATCH NUMBER
-	////////////////////////////////////
+  	////////////////////////////////////
+  	//END OFFSET INTO THE DATABASE FOR BATCHING THE RESULTS
+  	//BATCH NUMBER
+  	////////////////////////////////////
 
 
 
     /////////////////////////////////////////////////////////
-	//BEGIN BATCH ESTIMATOR
-	/////////////////////////////////////////////////////////
+  	//BEGIN BATCH ESTIMATOR
+  	/////////////////////////////////////////////////////////
 
-	unsigned long long estimatedNeighbors = 0;
-	unsigned int numBatches = 0;
-	unsigned int GPUBufferSize = 0;
+  	unsigned long long estimatedNeighbors = 0;
+  	unsigned int numBatches = 0;
+  	unsigned int GPUBufferSize = 0;
 
     std::vector< std::pair<unsigned int, unsigned int> > batchesVector;
 
@@ -970,13 +969,13 @@ void distanceTableNDGridBatches(
                     dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
         #endif
     }
-	double tendbatchest = omp_get_wtime();
+    double tendbatchest = omp_get_wtime();
 
     cout << "[GPU] ~ Time to estimate batches: " << tendbatchest - tstartbatchest << '\n';
     cout.flush();
 
     cout << "[GPU] ~ In calling function: Estimated neighbors = " << estimatedNeighbors
-            << ", num. batches = " << numBatches << ", GPU buffer size = " << GPUBufferSize << '\n';
+         << ", num. batches = " << numBatches << ", GPU buffer size = " << GPUBufferSize << '\n';
     cout.flush();
 
     // cout << "[GPU] ~ Batches: \n";
@@ -996,19 +995,19 @@ void distanceTableNDGridBatches(
     {
         setQueueIndex(batchesVector[GPUSTREAMS].first);
     }
-    // }
+      // }
 
-// setQueueIndex(0);
+    // setQueueIndex(0);
 
-	/////////////////////////////////////////////////////////
-	//END BATCH ESTIMATOR
-	/////////////////////////////////////////////////////////
+  	/////////////////////////////////////////////////////////
+  	//END BATCH ESTIMATOR
+  	/////////////////////////////////////////////////////////
 
 
 
-	///////////////////
-	//ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
-	///////////////////
+  	///////////////////
+  	//ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
+  	///////////////////
 
 	//THE NUMBER OF POINTERS IS EQUAL TO THE NUMBER OF BATCHES
 	for (int i = 0; i < numBatches; i++)
@@ -1021,21 +1020,21 @@ void distanceTableNDGridBatches(
 		pointersToNeighbors->push_back(tmpStruct);
 	}
 
-	///////////////////
-	//END ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
-	///////////////////
+  	///////////////////
+  	//END ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
+  	///////////////////
 
 
 
-	///////////////////////////////////
-	//ALLOCATE MEMORY FOR THE RESULT SET USING THE BATCH ESTIMATOR
-	///////////////////////////////////
+  	///////////////////////////////////
+  	//ALLOCATE MEMORY FOR THE RESULT SET USING THE BATCH ESTIMATOR
+  	///////////////////////////////////
 
-	//NEED BUFFERS ON THE GPU AND THE HOST FOR THE NUMBER OF CONCURRENT STREAMS
-	//GPU BUFFER ON THE DEVICE
-	//BUFFER ON THE HOST WITH PINNED MEMORY FOR FAST MEMCPY
-	//BUFFER ON THE HOST TO DUMP THE RESULTS OF BATCHES SO THAT GPU THREADS CAN CONTINUE
-	//EXECUTING STREAMS ON THE HOST
+  	//NEED BUFFERS ON THE GPU AND THE HOST FOR THE NUMBER OF CONCURRENT STREAMS
+  	//GPU BUFFER ON THE DEVICE
+  	//BUFFER ON THE HOST WITH PINNED MEMORY FOR FAST MEMCPY
+  	//BUFFER ON THE HOST TO DUMP THE RESULTS OF BATCHES SO THAT GPU THREADS CAN CONTINUE
+  	//EXECUTING STREAMS ON THE HOST
 
 	//GPU MEMORY ALLOCATION: key/value pairs
 
@@ -1063,95 +1062,96 @@ void distanceTableNDGridBatches(
     cout << "[GPU] ~ Allocation pointIDKey and pointInDistValue on the GPU, size = " << 2 * sizeof(int) * GPUBufferSize << '\n';
     cout.flush();
 
-	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
-	//ON THE HOST
-	//pinned result set memory for the host
-	//the number of elements are recorded for that batch in resultElemCountPerBatch
-	//NEED PINNED MEMORY ALSO BECAUSE YOU NEED IT TO USE STREAMS IN THRUST FOR THE MEMCOPY OF THE SORTED RESULTS
-	//can't do async copies without pinned memory
+  	//HOST RESULT ALLOCATION FOR THE GPU TO COPY THE DATA INTO A PINNED MEMORY ALLOCATION
+  	//ON THE HOST
+  	//pinned result set memory for the host
+  	//the number of elements are recorded for that batch in resultElemCountPerBatch
+  	//NEED PINNED MEMORY ALSO BECAUSE YOU NEED IT TO USE STREAMS IN THRUST FOR THE MEMCOPY OF THE SORTED RESULTS
+  	//can't do async copies without pinned memory
 
-	//PINNED MEMORY TO COPY FROM THE GPU
-	int * pointIDKey[GPUSTREAMS]; //key
-	int * pointInDistValue[GPUSTREAMS]; //value
+  	//PINNED MEMORY TO COPY FROM THE GPU
+  	int * pointIDKey[GPUSTREAMS]; //key
+  	int * pointInDistValue[GPUSTREAMS]; //value
 
-	double tstartpinnedresults = omp_get_wtime();
+  	double tstartpinnedresults = omp_get_wtime();
 
     #pragma omp parallel for num_threads(GPUSTREAMS)
-	for (int i = 0; i < GPUSTREAMS; i++)
-	{
-		cudaMallocHost((void **) &pointIDKey[i], 2 * sizeof(int) * GPUBufferSize);
-		cudaMallocHost((void **) &pointInDistValue[i], 2 * sizeof(int) * GPUBufferSize);
-	}
+  	for (int i = 0; i < GPUSTREAMS; i++)
+  	{
+  		  cudaMallocHost((void **) &pointIDKey[i], 2 * sizeof(int) * GPUBufferSize);
+  		  cudaMallocHost((void **) &pointInDistValue[i], 2 * sizeof(int) * GPUBufferSize);
+  	}
 
-	double tendpinnedresults = omp_get_wtime();
+  	double tendpinnedresults = omp_get_wtime();
 
     cout << "[GPU] ~ Time to allocate pinned memory for results: " << tendpinnedresults - tstartpinnedresults << '\n';
     cout.flush();
 
-	// cudaMalloc((void **) &pointIDKey, sizeof(int)*GPUBufferSize*NUMBATCHES);
-	// cudaMalloc((void **) &pointInDistValue, sizeof(int)*GPUBufferSize*NUMBATCHES);
+  	// cudaMalloc((void **) &pointIDKey, sizeof(int)*GPUBufferSize*NUMBATCHES);
+  	// cudaMalloc((void **) &pointInDistValue, sizeof(int)*GPUBufferSize*NUMBATCHES);
 
     cout << "[GPU] ~ Memory request for results on GPU (GiB): " << (double)(sizeof(int) * 2 * GPUBufferSize * GPUSTREAMS) / (1024 * 1024 * 1024) << '\n';
     cout.flush();
     cout << "[GPU] ~ Memory requested for results in MAIN MEMORY (GiB): " << (double)(sizeof(int) * 2 * GPUBufferSize * GPUSTREAMS) / (1024 * 1024 * 1024) << '\n';
     cout.flush();
 
-	///////////////////////////////////
-	//END ALLOCATE MEMORY FOR THE RESULT SET
-	///////////////////////////////////
+  	///////////////////////////////////
+  	//END ALLOCATE MEMORY FOR THE RESULT SET
+  	///////////////////////////////////
 
 
 
-	/////////////////////////////////
-	//SET OPENMP ENVIRONMENT VARIABLES
-	////////////////////////////////
+  	/////////////////////////////////
+  	//SET OPENMP ENVIRONMENT VARIABLES
+  	////////////////////////////////
 
-	omp_set_num_threads(GPUSTREAMS);
+  	omp_set_num_threads(GPUSTREAMS);
 
-	/////////////////////////////////
-	//END SET OPENMP ENVIRONMENT VARIABLES
-	////////////////////////////////
+  	/////////////////////////////////
+  	//END SET OPENMP ENVIRONMENT VARIABLES
+  	////////////////////////////////
 
 
 
-	/////////////////////////////////
-	//CREATE STREAMS
-	////////////////////////////////
+  	/////////////////////////////////
+  	//CREATE STREAMS
+  	////////////////////////////////
 
-	cudaStream_t stream[GPUSTREAMS];
+  	cudaStream_t stream[GPUSTREAMS];
 
-	for (int i = 0; i < GPUSTREAMS; i++)
+  	for (int i = 0; i < GPUSTREAMS; i++)
     {
-		cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
-	}
+        cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
+  	}
 
 
 
-	///////////////////////////////////
-	//LAUNCH KERNEL IN BATCHES
-	///////////////////////////////////
+  	///////////////////////////////////
+  	//LAUNCH KERNEL IN BATCHES
+  	///////////////////////////////////
 
-	//since we use the strided scheme, some of the batch sizes
-	//are off by 1 of each other, a first group of batches will
-	//have 1 extra data point to process, and we calculate which batch numbers will
-	//have that.  The batchSize is the lower value (+1 is added to the first ones)
+  	//since we use the strided scheme, some of the batch sizes
+  	//are off by 1 of each other, a first group of batches will
+  	//have 1 extra data point to process, and we calculate which batch numbers will
+  	//have that.  The batchSize is the lower value (+1 is added to the first ones)
 
     unsigned int datasetSize = *DBSIZE;
 
-	// unsigned int batchSize = (*DBSIZE) / numBatches;
+    // unsigned int batchSize = (*DBSIZE) / numBatches;
     unsigned int batchSize = datasetSize / numBatches;
-	// unsigned int batchesThatHaveOneMore = (*DBSIZE) - (batchSize * numBatches); //batch number 0- < this value have one more
+    // unsigned int batchesThatHaveOneMore = (*DBSIZE) - (batchSize * numBatches); //batch number 0- < this value have one more
     unsigned int batchesThatHaveOneMore = datasetSize - (batchSize * numBatches);
     cout << "[GPU] ~ Batches that have one more GPU thread: " << batchesThatHaveOneMore << " batchSize(N): " << batchSize << '\n';
     cout.flush();
 
-	uint64_t totalResultsLoop = 0;
+    uint64_t totalResultsLoop = 0;
 
     unsigned int * batchBegin = new unsigned int[GPUSTREAMS];
     for (int i = 0; i < GPUSTREAMS; i++)
     {
         batchBegin[i] = 0;
     }
+
     unsigned int * dev_batchBegin;
     errCode = cudaMalloc( (void**)&dev_batchBegin, GPUSTREAMS * sizeof(unsigned int));
     if (errCode != cudaSuccess)
@@ -1319,7 +1319,7 @@ void distanceTableNDGridBatches(
         		}
 
                 cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-        		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+            		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
                 cudaStreamSynchronize(stream[tid]);
 
@@ -1612,6 +1612,7 @@ void distanceTableNDGridBatches(
     {
         nbQueryPointTotal += nbQueryPoint[i];
     }
+
     (*nbQueriesGPU) = nbQueryPointTotal;
 
     for (int i = 0; i < GPUSTREAMS; ++i)
@@ -1690,13 +1691,13 @@ void distanceTableNDGridBatches(
 	// cudaFreeHost(pointIDKey); 
 	// cudaFreeHost(pointInDistValue);
 
-	double tFreeEnd = omp_get_wtime();
+  	double tFreeEnd = omp_get_wtime();
 
     cout << "[GPU] ~ Time freeing memory: " << tFreeEnd - tFreeStart << '\n';
     cout.flush();
-	// printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
-	// }
-	cout << "\n[GPU] ~ ** last error at end of fn batches (could be from freeing memory): " << cudaGetLastError() << "\n\n";
+  	// printf("\nTime freeing memory: %f", tFreeEnd - tFreeStart);
+  	// }
+  	cout << "\n[GPU] ~ ** last error at end of fn batches (could be from freeing memory): " << cudaGetLastError() << "\n\n";
     cout.flush();
 
 } // NDGridIndexGlobal
@@ -1705,20 +1706,20 @@ void distanceTableNDGridBatches(
 
 
 
-void warmUpGPU(){
-	// initialize all ten integers of a device_vector to 1
-	thrust::device_vector<int> D(10, 1);
-	// set the first seven elements of a vector to 9
-	thrust::fill(D.begin(), D.begin() + 7, 9);
-	// initialize a host_vector with the first five elements of D
-	thrust::host_vector<int> H(D.begin(), D.begin() + 5);
-	// set the elements of H to 0, 1, 2, 3, ...
-	thrust::sequence(H.begin(), H.end()); // copy all of H back to the beginning of D
-	thrust::copy(H.begin(), H.end(), D.begin());
-	// print D
-	for (int i = 0; i < D.size(); i++)
+void warmUpGPU() {
+    // initialize all ten integers of a device_vector to 1
+  	thrust::device_vector<int> D(10, 1);
+  	// set the first seven elements of a vector to 9
+  	thrust::fill(D.begin(), D.begin() + 7, 9);
+  	// initialize a host_vector with the first five elements of D
+  	thrust::host_vector<int> H(D.begin(), D.begin() + 5);
+  	// set the elements of H to 0, 1, 2, 3, ...
+  	thrust::sequence(H.begin(), H.end()); // copy all of H back to the beginning of D
+  	thrust::copy(H.begin(), H.end(), D.begin());
+  	// print D
+  	for (int i = 0; i < D.size(); i++)
     {
-		cout << " D[" << i << "] = " << D[i];
+        cout << " D[" << i << "] = " << D[i];
     }
 
 	return;
@@ -1735,9 +1736,8 @@ void constructNeighborTableKeyValueWithPtrs(
     int * pointersToNeighbors,
     unsigned int * cnt)
 {
-
-	//copy the value data:
-	std::copy(pointInDistValue, pointInDistValue + (*cnt), pointersToNeighbors);
+    //copy the value data:
+  	std::copy(pointInDistValue, pointInDistValue + (*cnt), pointersToNeighbors);
 
 	//Step 1: find all of the unique keys and their positions in the key array
 	unsigned int numUniqueKeys = 0;
