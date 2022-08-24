@@ -320,6 +320,7 @@ void gridIndexingGPU(
 			(*index)[cnt - 1].indexmax = i - 1;
 		}
 	}
+    delete[] cellKey;
 	(*index)[numNonEmptyCells - 1].indexmax = (*DBSIZE) - 1;
 
     printf("[INDEX] ~ Full cells: %d (%f, fraction full)\n", (unsigned int)numNonEmptyCells, numNonEmptyCells * 1.0 / double(totalCells));
@@ -1686,8 +1687,8 @@ void distanceTableNDGridBatches(
     // cudaFree(dev_pointInDistValue);
 
 	//free pinned memory on host
-	cudaFreeHost(pointIDKey);
-	cudaFreeHost(pointInDistValue);
+	// cudaFreeHost(pointIDKey); 
+	// cudaFreeHost(pointInDistValue);
 
 	double tFreeEnd = omp_get_wtime();
 

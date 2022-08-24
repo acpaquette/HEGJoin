@@ -8,6 +8,7 @@
 #include <list>
 #include <cstdint>
 #include "omp.h"
+#include <iostream>
 
 #include "Point.hpp"
 #include "Util.hpp"
@@ -15,6 +16,8 @@
 #include "params.h"
 #include "WorkQueue.h"
 #include "structs.h"
+
+using namespace std;
 
 uint64_t Util::multiThreadJoinWorkQueue(
 	unsigned int searchMode,
@@ -97,6 +100,7 @@ uint64_t Util::multiThreadJoinWorkQueue(
 
 				resultVector->shrink_to_fit();
 				results[tid] += resultVector->size();
+				delete resultVector;
 
 				cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
 			}while (0 != cpuBatch.second);
@@ -145,7 +149,6 @@ uint64_t Util::multiThreadJoinWorkQueue(
 					#else
 						unsigned int index = egoMapping[i];
 					#endif
-
 					Util::egoJoinV2(A, 0, A_sz - 1, B, index, index, 0, &nbCandidates[tid], resultVector, nbCandidatesArray);
 					// Util::egoJoinV2(A, 0, A_sz - 1, B, index, index, 0, tmpBuffer, nbNeighbors);
 
@@ -179,6 +182,7 @@ uint64_t Util::multiThreadJoinWorkQueue(
 				}
 				resultVector->shrink_to_fit();
 				results[tid] += resultVector->size();
+				delete resultVector;
 
 				if (searchMode == SM_HYBRID_STATIC)
 				{
@@ -215,6 +219,7 @@ uint64_t Util::multiThreadJoinWorkQueue(
 
 	delete[] results;
 	delete[] nbQueries;
+	delete[] nbCandidates;
 
 	return result;
 }

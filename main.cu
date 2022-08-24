@@ -354,6 +354,8 @@ int main(int argc, char * argv[])
                         }
                     }
                 #endif
+                delete[] nbCandidatesArray;
+                delete[] egoMapping;
             } // searchMode
         } // Super-EGO
         #pragma omp barrier
@@ -414,6 +416,9 @@ int main(int argc, char * argv[])
     delete[] minArr;
     delete[] maxArr;
     delete[] nCells;
+    delete[] index;
+    delete[] sortedDatabaseTmp;
+    delete[] gridCellLookupArr;
     delete[] indexLookupArr;
     delete[] neighborTable;
     delete[] database;

@@ -11,6 +11,7 @@
 #include "omp.h"
 #include <utility>
 #include <cmath>
+#include <iostream>
 
 #include "Point.hpp"
 #include "Util.hpp"
@@ -26,6 +27,7 @@ int Util::r1[GPUNUMDIM + 1][2]; //ranges for SimpleJoin
 int Util::r2[GPUNUMDIM + 1][2];
 int Util::r3[GPUNUMDIM + 1][2];
 
+static double seed = 1234567.0; // init only one time
 
 //-----------------------------------------
 void Util::reorderDim(pPoint A, int A_sz, pPoint B, int B_sz)
@@ -77,8 +79,8 @@ void Util::reorderDim(pPoint A, int A_sz, pPoint B, int B_sz)
     }
 
     //-- compute fail factor f in each dimension --
-    double f[GPUNUMDIM];
-    double g[GPUNUMDIM];
+    long double f[GPUNUMDIM];
+    long double g[GPUNUMDIM];
 
     for (int i = 0; i < GPUNUMDIM; i++)
     {
@@ -101,6 +103,9 @@ void Util::reorderDim(pPoint A, int A_sz, pPoint B, int B_sz)
         }
 
     }
+
+    delete[] hA;
+    delete[] hB;
 
     //-- normalizing f --
     for (int i = 0; i < GPUNUMDIM; i++)
@@ -168,8 +173,8 @@ void Util::reorderDim(pPoint A, int A_sz, pPoint B, int B_sz)
     }
 
     //-- reorder stats accrodingly as well --
-    double *rs = new double[GPUNUMDIM];
-    double *rd = new double[GPUNUMDIM];
+    double rs[GPUNUMDIM];
+    double rd[GPUNUMDIM];
 
     for (int j = 0; j < GPUNUMDIM; j++)
     {
@@ -591,12 +596,13 @@ void Util::simpleJoin4(pPoint A, int frA, int toA, pPoint B, int frB, int toB, i
 
 REAL Util::rnd()
 {
-	const double d2p31m = 2147483647;
+	const double d2p31m = 2147483647.0;
 	const double d2p31  = 2147483711.0;
 
-	static double seed = 1234567.0; //init only one time
+    long double temp1 = floor(16807 * seed / d2p31m) * d2p31m;
+    long double temp2 = 16807 * seed;
+    long double new_seed = temp2 - temp1;
+    seed = new_seed;
 
-	seed = 16807 * seed - floor(16807 * seed / d2p31m) * d2p31m;
-
-	return (REAL)(fabs(seed / d2p31));
+    return (REAL)(fabs(seed / d2p31));
 }
