@@ -3,6 +3,10 @@
 
 #include <vector>
 #include <cstdint>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+#include "cuda_profiler_api.h"
 
 #include "params.h"
 

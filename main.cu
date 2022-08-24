@@ -21,6 +21,7 @@
 
 // #include <boost/sort/sort.hpp>
 #include <boost/sort/sort.hpp>
+#include <nvToolsExt.h>
 // #include <parallel/algorithm>
 
 using std::cout;
@@ -257,6 +258,9 @@ int main(int argc, char * argv[])
 
     double tStart = omp_get_wtime();
     double tEndGPU, tEndEgo;
+    nvtxNameOsThread(syscall(SYS_gettid), "Main Thread");
+    nvtxRangePush(__FUNCTION__);
+    cudaProfilerStart();
     #pragma omp parallel num_threads(2)
     {
         int tid = omp_get_thread_num();
@@ -302,8 +306,11 @@ int main(int argc, char * argv[])
 
                 fprintf(stdout, "[EGO] ~ EGO-sorting of A\n");
                 double tStartEGOSort = omp_get_wtime();
-                // std::stable_sort(A, A + A_sz, egoSortFunction);
-                boost::sort::sample_sort(A, A + A_sz, egoSortFunction, CPU_THREADS);
+                fprintf(stdout, "STARTING SORT\n");
+                fprintf(stdout, "%d, %d\n", A_sz, CPU_THREADS);
+                std::stable_sort(A, A + A_sz, egoSortFunction);
+                // boost::sort::sample_sort(A, A + A_sz, egoSortFunction, CPU_THREADS);
+                fprintf(stdout, "FINISHED SORT\n");
                 double tEndEGOSort = omp_get_wtime();
                 egoSort = tEndEGOSort - tStartEGOSort;
                 fprintf(stdout, "[EGO] ~ Done EGO-sorting in %f\n", egoSort);
@@ -360,6 +367,8 @@ int main(int argc, char * argv[])
         } // Super-EGO
         #pragma omp barrier
     } // parallel section
+    cudaProfilerStop();
+    nvtxRangePop();
     double tEnd = omp_get_wtime();
     double computeTime = tEnd - tStart;
 

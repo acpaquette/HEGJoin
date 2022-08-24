@@ -17,7 +17,9 @@
 #include "WorkQueue.h"
 #include "structs.h"
 
+#include </usr/local/cuda-11.1/include/nvToolsExt.h>
 using namespace std;
+
 
 uint64_t Util::multiThreadJoinWorkQueue(
 	unsigned int searchMode,
@@ -59,6 +61,8 @@ uint64_t Util::multiThreadJoinWorkQueue(
 
 			do
 			{
+				nvtxNameOsThread(tid, "WORKER THREAD");
+				nvtxRangePushA("work");
 				// printf("[EGO | T_%d] ~ Begin: %d, end: %d\n", tid, cpuBatch.first, cpuBatch.second);
 				nbQueries[tid] += cpuBatch.second - cpuBatch.first;
 				unsigned int indexmaxPrec = 0;
@@ -103,7 +107,9 @@ uint64_t Util::multiThreadJoinWorkQueue(
 				delete resultVector;
 
 				cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
-			}while (0 != cpuBatch.second);
+				nvtxRangePop();
+			}
+			while (0 != cpuBatch.second);
 
 			// results[tid] += resultVector.size() / 2;
 
