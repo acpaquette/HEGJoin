@@ -2,10 +2,10 @@
 #define PARAMS_H
 
 // Input data dimension
-#define GPUNUMDIM 90
+// #define GPUNUMDIM 90
 
 // Number of dimensions to index
-#define NUMINDEXEDDIM 6
+// #define NUMINDEXEDDIM 6
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
@@ -14,7 +14,7 @@
 #define GPUSTREAMS 3
 
 // Number of CPU threads to use when joining with the CPU
-#define CPU_THREADS 8
+// #define CPU_THREADS 8
 
 // Number of query points taken by a CPU thread at once
 #define CPU_BATCH_SIZE 1024

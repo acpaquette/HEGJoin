@@ -7,9 +7,9 @@ CC = nvcc
 CXX = g++
 EXECUTABLE = main
 
-FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -arch=compute_80 -code=sm_80 -lcuda -lineinfo -I/home/benoit/research/boost_1_75_0
+FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -arch=compute_61 -code=sm_61 -lpthread -lnvToolsExt -lcuda -lineinfo -I/home/apaquette/boost_1_75_0 -I/usr/local/cuda-11.4/include
 CFLAGS = -c -D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES
-CFLAGS2 = -std=c++14 -O3 -fopenmp -march=native -mavx -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wpedantic -Wunused -Wlogical-op -march=znver2
+CFLAGS2 = -std=c++14 -O3 -fopenmp -lpthread -march=native -mavx -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wpedantic -Wunused -Wlogical-op
 
 all: $(EXECUTABLE)
 
@@ -37,13 +37,13 @@ StaticPartition.o: StaticPartition.cpp params.h
 ################################################################################
 
 Point.o: Point.cpp params.h
-	$(CXX) -D_REENTRANT $(CFLAGS2) -c Point.cpp
+	$(CXX) -D_REENTRANT $(CFLAGS2) $(PARAMS) -c Point.cpp
 
 Util.o: Util.cpp params.h
-	$(CXX) -D_REENTRANT $(CFLAGS2) -c Util.cpp
+	$(CXX) -D_REENTRANT $(CFLAGS2) $(PARAMS) -c Util.cpp
 
 MultiThreadJoin.o: MultiThreadJoin.cpp params.h
-	$(CXX) -D_REENTRANT $(CFLAGS2) -c MultiThreadJoin.cpp
+	$(CXX) -D_REENTRANT $(CFLAGS2) $(PARAMS) -c MultiThreadJoin.cpp
 
 
 $(EXECUTABLE): $(CUDAOBJECTS) $(OBJECTS) $(EGOBJECTS)
