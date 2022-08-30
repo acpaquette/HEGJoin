@@ -79,7 +79,7 @@ void importNDDatasetBinary(std::vector< std::vector<DTYPE> > * dataPoints, char 
 
     // (*nbPoints) = nbPointsTmp;
 
-    DTYPE * dataPointsPointer = (double *) readBuffer;
+    DTYPE * dataPointsPointer = (DTYPE *) readBuffer;
 
     // for(int i = 0; i < 10; i++)
     // {

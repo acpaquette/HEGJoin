@@ -3,3 +3,19 @@ main
 *.pdf
 *.sh
 
+analysis_scripts
+datasets
+egr33_test_results
+egr75_test_results
+scripts
+
+cpu_times.txt
+dataset_fixed_len_pts_expo_NDIM_16_pts_10000000.txt
+gaia_50M_0_1.txt
+HEGJoin_segfault_gaia_50M
+HEGJoin_segfault_gaia_50M.txt
+
+nvprof
+osm_50M_0_1.txt
+osm_normalize_100M.txt
+osm_normalize_dup_rm_50M.txt

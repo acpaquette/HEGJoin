@@ -17,6 +17,7 @@
 #include "WorkQueue.h"
 #include "structs.h"
 
+#include </usr/local/cuda-11.4/include/nvToolsExt.h>
 using namespace std;
 
 uint64_t Util::multiThreadJoinWorkQueue(

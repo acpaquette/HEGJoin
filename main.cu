@@ -253,7 +253,7 @@ int main(int argc, char * argv[])
     unsigned int nbQueriesGPU = 0;
 
     omp_set_nested(1);
-	  omp_set_dynamic(0);
+	omp_set_dynamic(0);
 
     double tStart = omp_get_wtime();
     double tEndGPU, tEndEgo;

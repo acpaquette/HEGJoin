@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include "omp.h"
 
+#include <pthread.h>
+
 // //thrust
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
@@ -1176,6 +1178,11 @@ void distanceTableNDGridBatches(
         nbQueryPoint[i] = 0;
     }
 
+    #if GPU_LOCKING
+    pthread_mutex_t gpu_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init(&gpu_lock, NULL);
+    #endif
+
     if (SM_HYBRID == searchMode)
     {
         unsigned int globalBatchCounter = GPUSTREAMS;
@@ -1250,7 +1257,9 @@ void distanceTableNDGridBatches(
                     cout.flush();
                 #endif
 
-
+                #if GPU_LOCKING
+                pthread_mutex_lock(&gpu_lock);
+                #endif
                 // double beginKernel = omp_get_wtime();
                 cudaEventRecord(startKernel[tid], stream[tid]);
                 #if SORT_BY_WORKLOAD
@@ -1312,16 +1321,22 @@ void distanceTableNDGridBatches(
         		}
         		catch(std::bad_alloc &e)
         		{
+                    #if GPU_LOCKING
+                    pthread_mutex_unlock(&gpu_lock);
+                    #endif
         			std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
                     cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                     cout.flush();
         			exit(1);
         		}
+                #if GPU_LOCKING
+                pthread_mutex_unlock(&gpu_lock);
+                #endif
 
                 cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
             		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
-                cudaStreamSynchronize(stream[tid]);
+                // cudaStreamSynchronize(stream[tid]);
 
                 double tableconstuctstart = omp_get_wtime();
         		//set the number of neighbors in the pointer struct:
@@ -1461,6 +1476,9 @@ void distanceTableNDGridBatches(
                 cout.flush();
             #endif
 
+            #if GPU_LOCKING
+            pthread_mutex_lock(&gpu_lock);
+            #endif
 
     		//execute kernel
     		//0 is shared memory pool
@@ -1541,12 +1559,19 @@ void distanceTableNDGridBatches(
 
     		try {
     			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+
     		} catch(std::bad_alloc &e) {
+                #if GPU_LOCKING
+                pthread_mutex_unlock(&gpu_lock);
+                #endif
     			std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
                 cout.flush();
     			exit(1);
     		}
 
+            #if GPU_LOCKING
+            pthread_mutex_unlock(&gpu_lock);
+            #endif
             // cout << "[GPU] ~ Thrust sort by key\n";
             // cout.flush();
             // cout << "[GPU] ~ Copy size: " << cnt[tid] * sizeof(int) << '\n';
@@ -1560,7 +1585,7 @@ void distanceTableNDGridBatches(
             // cout.flush();
 
     		//need to make sure the data is copied before constructing portion of the neighbor table
-    		cudaStreamSynchronize(stream[tid]);
+    		// cudaStreamSynchronize(stream[tid]);
 
             // cout << "[GPU] ~ Stream synchronization\n";
             // cout.flush();
