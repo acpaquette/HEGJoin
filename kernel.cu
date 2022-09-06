@@ -343,12 +343,14 @@ __forceinline__ __device__ void evalPoint(
 {
 	// unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
 
-	if (!k % threadIdx.x) {
-		return;
-	}
-
 	DTYPE runningTotalDist = 0;
 	unsigned int dataIdx = indexLookupArr[k];
+
+	// if (threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("BLOCK %d COMPARING %d to %d\n", blockIdx.x, pointIdx, dataIdx);
+	// 	#endif
+	// }
 
 	for(int l = 0; l < GPUNUMDIM; l++){
 		runningTotalDist += ( database[dataIdx * GPUNUMDIM + l] - point[l])
@@ -358,16 +360,16 @@ __forceinline__ __device__ void evalPoint(
 	if(sqrt(runningTotalDist) <= (*epsilon)){
 	//if(runningTotalDist <= ((*epsilon) * (*epsilon))){
 		unsigned int idx = atomicAdd(cnt, int(1));
-		pointIDKey[idx] = pointIdx; // --> HERE
-		pointInDistVal[idx] = dataIdx;
+		// pointIDKey[idx] = pointIdx; // --> HERE
+		// pointInDistVal[idx] = dataIdx;
 
 		if(differentCell)
 		{
 			unsigned int idx = atomicAdd(cnt, int(1));
-			pointIDKey[idx] = dataIdx;
-			// pointIDKey[tid] = dataIdx;
-			pointInDistVal[idx] = pointIdx;
-			// pointInDistVal[tid] = pointIdx;
+			// pointIDKey[idx] = dataIdx;
+			// // pointIDKey[tid] = dataIdx;
+			// pointInDistVal[idx] = pointIdx;
+			// // pointInDistVal[tid] = pointIdx;
 		}
 	}
 }
@@ -407,9 +409,18 @@ __device__ void evaluateCell(
 		//compute the neighbors for the adjacent non-empty cell
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
+		// if (threadIdx.x == 0) {
+		// 	# if __CUDA_ARCH__>=200
+		// 	printf("BLOCK %d COMPUTING %d FROM: %d: %d\n", blockIdx.x, pointIdx, index[GridIndex].indexmin, index[GridIndex].indexmax);
+		// 	#endif
+		// }
 
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; ++k){
-			evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=BLOCKSIZE) {
+			uint64_t pointToCompare = (k + threadIdx.x);
+			if (!(pointToCompare >= index[GridIndex].indexmax)) {
+				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+			}
 		}
 	}
 }
@@ -749,13 +760,17 @@ __global__ void kernelNDGridIndexGlobal(
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 
-	if (*N <= tid)
+	if (*N <= (tid / BLOCKSIZE))
 	{
 		return;
 	}
 
-	unsigned int pointId = *batchBegin;
-
+	unsigned int pointId = (*batchBegin) + blockIdx.x;
+	// if (threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("BLOCK %d COMPUTING %d\n", blockIdx.x, pointId);
+	// 	#endif
+	// }
 	//make a local copy of the point
 	DTYPE point[GPUNUMDIM];
 	for (int i = 0; i < GPUNUMDIM; i++)

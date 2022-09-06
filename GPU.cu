@@ -1336,8 +1336,12 @@ void distanceTableNDGridBatches(
     	//i=0...numBatches
         
         const uint64_t ITERATIONS = (uint64_t)((1.0 * (*DBSIZE)) / (1.0 * PBLOCKS));
+        #if !SILENT_GPU
+            cout << "[GPU] ~ Total Iterations: " << ITERATIONS << '\n';
+            cout.flush();
+        #endif
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < ITERATIONS; ++i)
+    	for (int i = 0; i < (*DBSIZE); i+=PBLOCKS)
         // for (int i = 0; i < 9; ++i)
     	{
             int tid = omp_get_thread_num();
@@ -1345,7 +1349,7 @@ void distanceTableNDGridBatches(
             double tStartLoop = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << '\n';
+                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i / PBLOCKS << '\n';
                 cout.flush();
             #endif
 
@@ -1470,24 +1474,24 @@ void distanceTableNDGridBatches(
 
     		//sort by key with the data already on the device:
     		//wrap raw pointer with a device_ptr to use with Thrust functions
-    		thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
-    		thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
+    		// thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
+    		// thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
 
     		//XXXXXXXXXXXXXXXX
     		//THRUST USING STREAMS REQUIRES THRUST V1.8
     		//XXXXXXXXXXXXXXXX
 
-    		try {
-    			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+    		// try {
+    		// 	thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
 
-    		} catch(std::bad_alloc &e) {
-                #if GPU_LOCKING
-                pthread_mutex_unlock(&gpu_lock);
-                #endif
-    			std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
-                cout.flush();
-    			exit(1);
-    		}
+    		// } catch(std::bad_alloc &e) {
+            //     #if GPU_LOCKING
+            //     pthread_mutex_unlock(&gpu_lock);
+            //     #endif
+    		// 	std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
+            //     cout.flush();
+    		// 	exit(1);
+    		// }
 
             #if GPU_LOCKING
             pthread_mutex_unlock(&gpu_lock);
@@ -1498,24 +1502,24 @@ void distanceTableNDGridBatches(
             // cout.flush();
 
     		//thrust with streams into individual buffers for each batch
-    		cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-    		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+    		// cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+    		// cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
-            // cout << "[GPU] ~ Async memcpy of pointers\n";
-            // cout.flush();
+            // // cout << "[GPU] ~ Async memcpy of pointers\n";
+            // // cout.flush();
 
-    		//need to make sure the data is copied before constructing portion of the neighbor table
-    		// cudaStreamSynchronize(stream[tid]);
+    		// //need to make sure the data is copied before constructing portion of the neighbor table
+    		// // cudaStreamSynchronize(stream[tid]);
 
-            // cout << "[GPU] ~ Stream synchronization\n";
-            // cout.flush();
+            // // cout << "[GPU] ~ Stream synchronization\n";
+            // // cout.flush();
 
     		double tableconstuctstart = omp_get_wtime();
-    		//set the number of neighbors in the pointer struct:
-    		(*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
-    		(*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
+    		// //set the number of neighbors in the pointer struct:
+    		// (*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
+    		// (*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
 
-    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
+    		// constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
 
     		//cout <<"In make neighbortable. Data array ptr: "<<(*pointersToNeighbors)[i].dataPtr<<" , size of data array: "<<(*pointersToNeighbors)[i].sizeOfDataArr;cout.flush();
 
