@@ -1341,9 +1341,10 @@ void distanceTableNDGridBatches(
             cout.flush();
         #endif
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < (*DBSIZE); i+=PBLOCKS)
+    	for (int i = 0; i < (PBLOCKS); i+=PBLOCKS)
         // for (int i = 0; i < 9; ++i)
     	{
+            // Need to handle i > DBSIZE
             int tid = omp_get_thread_num();
 
             double tStartLoop = omp_get_wtime();
