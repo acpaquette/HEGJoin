@@ -2,19 +2,20 @@
 #define PARAMS_H
 
 // Input data dimension
-#define GPUNUMDIM 90
+// #define GPUNUMDIM 90
 
 // Number of dimensions to index
-#define NUMINDEXEDDIM 6
+// #define NUMINDEXEDDIM 6
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
+#define PBLOCKS 256
 
 // Number of GPU streams
-#define GPUSTREAMS 3
+#define GPUSTREAMS 1
 
 // Number of CPU threads to use when joining with the CPU
-#define CPU_THREADS 8
+// #define CPU_THREADS 8
 
 // Number of query points taken by a CPU thread at once
 #define CPU_BATCH_SIZE 1024
@@ -35,7 +36,7 @@
 
 // Limits the output produced by the GPU when computing
 // 0 to output everything, 1 to limit the output
-#define SILENT_GPU 1
+#define SILENT_GPU 0
 
 // Metrics to evaluate the throughput of the CPU and GPU by counting the number of candidate points they refine
 #define COUNT_CANDIDATES 0

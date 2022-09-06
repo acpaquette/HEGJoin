@@ -343,6 +343,10 @@ __forceinline__ __device__ void evalPoint(
 {
 	// unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
 
+	if (!k % threadIdx.x) {
+		return;
+	}
+
 	DTYPE runningTotalDist = 0;
 	unsigned int dataIdx = indexLookupArr[k];
 
@@ -726,8 +730,6 @@ __global__ void kernelNDGridIndexBatchEstimator_v2(
 __global__ void kernelNDGridIndexGlobal(
 		unsigned int * batchBegin,
 		unsigned int * N,
-		unsigned int * offset,
-		unsigned int * batchNum,
 		DTYPE * database,
 		DTYPE * sortedCells,
 		unsigned int * originPointIndex,
@@ -752,7 +754,7 @@ __global__ void kernelNDGridIndexGlobal(
 		return;
 	}
 
-	unsigned int pointId = atomicAdd(batchBegin, int(1));
+	unsigned int pointId = *batchBegin;
 
 	//make a local copy of the point
 	DTYPE point[GPUNUMDIM];
