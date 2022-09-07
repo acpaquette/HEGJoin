@@ -1606,6 +1606,9 @@ void distanceTableNDGridBatches(
         // }
 
     }
+    int pointToCheck = 0;
+    neighborTableLookup tableRecord = neighborTable[originPointIndex[pointToCheck]];
+    std::cout << "NEIGHBOR COUNT FOR POINT " << pointToCheck << "(" << originPointIndex[pointToCheck] << ")" << ": " << tableRecord.indexmax - tableRecord.indexmin << std::endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
