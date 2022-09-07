@@ -1340,16 +1340,18 @@ void distanceTableNDGridBatches(
         //FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
     	//i=0...numBatches
         
-        const uint64_t ITERATIONS = (uint64_t)((1.0 * (*DBSIZE)) / (1.0 * PBLOCKS));
+        const uint64_t ITERATIONS = (uint64_t)ceil((1.0 * (*DBSIZE)) / (1.0 * PBLOCKS));
         #if !SILENT_GPU
             cout << "[GPU] ~ Total Iterations: " << ITERATIONS << '\n';
             cout.flush();
         #endif
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < (PBLOCKS); i+=PBLOCKS)
+    	for (int i = 0; i < (*DBSIZE); i+=PBLOCKS)
         // for (int i = 0; i < 9; ++i)
     	{
-            // Need to handle i > DBSIZE
+            if (i > (*DBSIZE)) {
+                continue;
+            }
             int tid = omp_get_thread_num();
 
             double tStartLoop = omp_get_wtime();
@@ -1449,7 +1451,7 @@ void distanceTableNDGridBatches(
     		}
             #if !SILENT_GPU
     		else {
-                cout << "[GPU] ~ Result set size within epsilon: " << cnt[1] << '\n';
+                cout << "[GPU] ~ Result set size within epsilon: " << cnt[0] << '\n';
                 cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                 cout.flush();
     		}
@@ -1537,10 +1539,16 @@ void distanceTableNDGridBatches(
             #endif
 
     		//add the batched result set size to the total count
+            uint64_t localSum = 0;
+            uint64_t cntIdx = 0;
             for (int j = 0; j < PBLOCKS; j++) {
-    		    totalResultsLoop += cnt[(tid * PBLOCKS) + j];
-                cnt[(tid * PBLOCKS) + j] = 0;
+                cntIdx = ((tid * PBLOCKS) + j);
+    		    localSum += cnt[cntIdx];
+                cnt[cntIdx] = 0;
             }
+            cout << "LOCAL SUM FOR BATCH " << i / PBLOCKS << ": " << localSum << endl;
+            totalResultsLoop+=localSum;
+            localSum = 0;
 
             #if !SILENT_GPU
                 cout << "[GPU] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n';

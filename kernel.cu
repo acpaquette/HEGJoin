@@ -777,7 +777,7 @@ __global__ void kernelNDGridIndexGlobal(
 		#endif
 	}
 
-	if (blockIdx.x == 1 && threadIdx.x == 0) {
+	if (blockIdx.x == 0 && threadIdx.x == 0) {
 		# if __CUDA_ARCH__>=200
 		printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
 		#endif
