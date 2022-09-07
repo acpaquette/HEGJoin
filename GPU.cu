@@ -847,6 +847,11 @@ void distanceTableNDGridBatches(
   	dev_cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS * PBLOCKS);
   	*dev_cnt = 0;
 
+    for (int i = 0; i < (GPUSTREAMS * PBLOCKS); i++) {
+        cnt[i] = 0;
+        dev_cnt[i] = 0;
+    }
+
   	//allocate on the device
   	errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS * PBLOCKS);
   	if (errCode != cudaSuccess)
@@ -1444,7 +1449,7 @@ void distanceTableNDGridBatches(
     		}
             #if !SILENT_GPU
     		else {
-                cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid * PBLOCKS] << '\n';
+                cout << "[GPU] ~ Result set size within epsilon: " << cnt[1] << '\n';
                 cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                 cout.flush();
     		}

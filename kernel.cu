@@ -359,13 +359,13 @@ __forceinline__ __device__ void evalPoint(
 
 	if(sqrt(runningTotalDist) <= (*epsilon)){
 	//if(runningTotalDist <= ((*epsilon) * (*epsilon))){
-		unsigned int idx = atomicAdd(cnt + blockIdx.x, int(1));
+		unsigned int idx = atomicAdd((cnt + blockIdx.x), int(1));
 		// pointIDKey[idx] = pointIdx; // --> HERE
 		// pointInDistVal[idx] = dataIdx;
 
 		if(differentCell)
 		{
-			unsigned int idx = atomicAdd(cnt + blockIdx.x, int(1));
+			unsigned int idx = atomicAdd((cnt + blockIdx.x), int(1));
 			// pointIDKey[idx] = dataIdx;
 			// // pointIDKey[tid] = dataIdx;
 			// pointInDistVal[idx] = pointIdx;
@@ -413,7 +413,7 @@ __device__ void evaluateCell(
 
 		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=BLOCKSIZE) {
 			uint64_t pointToCompare = (k + threadIdx.x);
-			if (!(pointToCompare >= index[GridIndex].indexmax)) {
+			if (!(pointToCompare > index[GridIndex].indexmax)) {
 				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 			}
 		}
@@ -777,7 +777,7 @@ __global__ void kernelNDGridIndexGlobal(
 		#endif
 	}
 
-	if (blockIdx.x == 0 && threadIdx.x == 0) {
+	if (blockIdx.x == 1 && threadIdx.x == 0) {
 		# if __CUDA_ARCH__>=200
 		printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
 		#endif
