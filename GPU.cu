@@ -840,15 +840,15 @@ void distanceTableNDGridBatches(
   	//count values - for an individual kernel launch
   	//need different count values for each stream
   	unsigned int * cnt;
-  	cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
+  	cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS * PBLOCKS);
   	*cnt = 0;
 
   	unsigned int * dev_cnt;
-  	dev_cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS);
+  	dev_cnt = (unsigned int*)malloc(sizeof(unsigned int) * GPUSTREAMS * PBLOCKS);
   	*dev_cnt = 0;
 
   	//allocate on the device
-  	errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS);
+  	errCode = cudaMalloc((void**)&dev_cnt, sizeof(unsigned int) * GPUSTREAMS * PBLOCKS);
   	if (errCode != cudaSuccess)
     {
 		cout << "[GPU] ~ Error: Alloc cnt -- error with code " << errCode << '\n';
@@ -1386,8 +1386,8 @@ void distanceTableNDGridBatches(
     		}
 
     		//the batched result set size (reset to 0):
-    		cnt[tid] = 0;
-    		errCode = cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
+    		// cnt[tid] = 0;
+    		errCode = cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int) * PBLOCKS, cudaMemcpyHostToDevice, stream[tid] );
     		if (errCode != cudaSuccess)
             {
     			cout << "[GPU] ~ Error: dev_cnt memcpy Got error with code " << errCode << '\n';
@@ -1411,12 +1411,12 @@ void distanceTableNDGridBatches(
             #if SORT_BY_WORKLOAD
                 kernelNDGridIndexGlobal<<< PBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
-                    dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                    dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid * PBLOCKS], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid]);
             #else
                 kernelNDGridIndexGlobal<<< PBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
-                    dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
+                    dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid * PBLOCKS], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid]);
             #endif
             cudaEventRecord(stopKernel[tid], stream[tid]);
@@ -1435,7 +1435,7 @@ void distanceTableNDGridBatches(
     		}
 
     		// find the size of the number of results
-    		errCode = cudaMemcpyAsync( &cnt[tid], &dev_cnt[tid], sizeof(unsigned int), cudaMemcpyDeviceToHost, stream[tid] );
+    		errCode = cudaMemcpyAsync( &cnt[tid * PBLOCKS], &dev_cnt[tid * PBLOCKS], sizeof(unsigned int) * PBLOCKS, cudaMemcpyDeviceToHost, stream[tid] );
     		if (errCode != cudaSuccess)
             {
     			cout << "[GPU] ~ Error: getting cnt from GPU Got error with code " << errCode << '\n';
@@ -1444,7 +1444,7 @@ void distanceTableNDGridBatches(
     		}
             #if !SILENT_GPU
     		else {
-                cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid] << '\n';
+                cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid * PBLOCKS] << '\n';
                 cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                 cout.flush();
     		}
@@ -1532,7 +1532,10 @@ void distanceTableNDGridBatches(
             #endif
 
     		//add the batched result set size to the total count
-    		totalResultsLoop += cnt[tid];
+            for (int j = 0; j < PBLOCKS; j++) {
+    		    totalResultsLoop += cnt[(tid * PBLOCKS) + j];
+                cnt[(tid * PBLOCKS) + j] = 0;
+            }
 
             #if !SILENT_GPU
                 cout << "[GPU] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n';

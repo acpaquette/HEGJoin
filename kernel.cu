@@ -359,13 +359,13 @@ __forceinline__ __device__ void evalPoint(
 
 	if(sqrt(runningTotalDist) <= (*epsilon)){
 	//if(runningTotalDist <= ((*epsilon) * (*epsilon))){
-		unsigned int idx = atomicAdd(cnt, int(1));
+		unsigned int idx = atomicAdd(cnt + blockIdx.x, int(1));
 		// pointIDKey[idx] = pointIdx; // --> HERE
 		// pointInDistVal[idx] = dataIdx;
 
 		if(differentCell)
 		{
-			unsigned int idx = atomicAdd(cnt, int(1));
+			unsigned int idx = atomicAdd(cnt + blockIdx.x, int(1));
 			// pointIDKey[idx] = dataIdx;
 			// // pointIDKey[tid] = dataIdx;
 			// pointInDistVal[idx] = pointIdx;
@@ -409,11 +409,6 @@ __device__ void evaluateCell(
 		//compute the neighbors for the adjacent non-empty cell
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
-		// if (threadIdx.x == 0) {
-		// 	# if __CUDA_ARCH__>=200
-		// 	printf("BLOCK %d COMPUTING %d FROM: %d: %d\n", blockIdx.x, pointIdx, index[GridIndex].indexmin, index[GridIndex].indexmax);
-		// 	#endif
-		// }
 
 
 		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=BLOCKSIZE) {
@@ -779,6 +774,12 @@ __global__ void kernelNDGridIndexGlobal(
 			point[i] = database[ originPointIndex[pointId] * GPUNUMDIM + i ];
 		#else
 			point[i] = database[ pointId * GPUNUMDIM + i ];
+		#endif
+	}
+
+	if (blockIdx.x == 0 && threadIdx.x == 0) {
+		# if __CUDA_ARCH__>=200
+		printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
 		#endif
 	}
 
