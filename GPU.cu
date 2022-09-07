@@ -1606,14 +1606,17 @@ void distanceTableNDGridBatches(
         // }
 
     }
+    std::ofstream outfile ("neighbor_table.csv",std::ofstream::binary);
+    outfile << "pointIdx,originalPointIdx,neighborCnt" << endl;
+    int neighborCnt = 0;
     int pointToCheckMin = 0;
     int pointToCheckMax = 4096;
-    int neighborSum = 0;
-    for (int i = pointToCheckMin; i < pointToCheckMax; i++) {
+    for (int i = 0; i < (*DBSIZE); i++) {
         neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
-        neighborSum += tableRecord.indexmax - tableRecord.indexmin;
+        neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
+
+        outfile << i << "," << originPointIndex[i] << "," << neighborCnt << endl;
     }
-    std::cout << "NEIGHBOR SUM BETWEEN POINT " << pointToCheckMin << " and " << pointToCheckMax << ": " << neighborSum << std::endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
