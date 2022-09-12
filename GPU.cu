@@ -1607,16 +1607,29 @@ void distanceTableNDGridBatches(
 
     }
     std::ofstream outfile ("neighbor_table.csv",std::ofstream::binary);
-    outfile << "pointIdx,originalPointIdx,neighborCnt" << endl;
+    outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
     int neighborCnt = 0;
-    int pointToCheckMin = 0;
-    int pointToCheckMax = 4096;
     for (int i = 0; i < (*DBSIZE); i++) {
         neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
         neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
 
-        outfile << i << "," << originPointIndex[i] << "," << neighborCnt << endl;
+        outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
+        std::vector<unsigned int> neighbors = {};
+        for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
+            neighbors.push_back(originPointIndex[j]);
+        }
+        std::sort(neighbors.begin(), neighbors.end());
+        for (int j = 0; j < neighborCnt; j++) {
+            outfile << neighbors[j];
+            if (j == neighborCnt - 1) {
+                outfile << endl;
+            }
+            else {
+                outfile << ",";
+            }
+        }
     }
+    cout << "WROTE ALL NEIGHBORS" << endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
