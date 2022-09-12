@@ -9,7 +9,7 @@
 
 // Number of GPU threads per block
 #define BLOCKSIZE 256
-#define PBLOCKS 4096 * 4
+#define PBLOCKS 4096
 
 // Number of GPU streams
 #define GPUSTREAMS 3

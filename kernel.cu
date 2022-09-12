@@ -360,16 +360,16 @@ __forceinline__ __device__ void evalPoint(
 	if(sqrt(runningTotalDist) <= (*epsilon)){
 	//if(runningTotalDist <= ((*epsilon) * (*epsilon))){
 		unsigned int idx = atomicAdd(cnt, int(1));
-		// pointIDKey[idx] = pointIdx; // --> HERE
-		// pointInDistVal[idx] = dataIdx;
+		pointIDKey[idx] = pointIdx; // --> HERE
+		pointInDistVal[idx] = dataIdx;
 
 		if(differentCell)
 		{
 			unsigned int idx = atomicAdd(cnt, int(1));
-			// pointIDKey[idx] = dataIdx;
-			// // pointIDKey[tid] = dataIdx;
-			// pointInDistVal[idx] = pointIdx;
-			// // pointInDistVal[tid] = pointIdx;
+			pointIDKey[idx] = dataIdx;
+			// pointIDKey[tid] = dataIdx;
+			pointInDistVal[idx] = pointIdx;
+			// pointInDistVal[tid] = pointIdx;
 		}
 	}
 }
@@ -777,11 +777,11 @@ __global__ void kernelNDGridIndexGlobal(
 		#endif
 	}
 
-	if (blockIdx.x == 0 && threadIdx.x == 0) {
-		# if __CUDA_ARCH__>=200
-		printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
-		#endif
-	}
+	// if (blockIdx.x == 0 && threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
+	// 	#endif
+	// }
 
 	//calculate the coords of the Cell for the point
 	//and the min/max ranges in each dimension

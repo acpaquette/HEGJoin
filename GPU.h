@@ -5,6 +5,7 @@
 #include "params.h"
 
 #include <vector>
+#include <fstream>
 
 void gridIndexingGPU(
         unsigned int * DBSIZE,

@@ -1483,24 +1483,24 @@ void distanceTableNDGridBatches(
 
     		//sort by key with the data already on the device:
     		//wrap raw pointer with a device_ptr to use with Thrust functions
-    		// thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
-    		// thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
+    		thrust::device_ptr<int> dev_keys_ptr(dev_pointIDKey[tid]);
+    		thrust::device_ptr<int> dev_data_ptr(dev_pointInDistValue[tid]);
 
     		//XXXXXXXXXXXXXXXX
     		//THRUST USING STREAMS REQUIRES THRUST V1.8
     		//XXXXXXXXXXXXXXXX
 
-    		// try {
-    		// 	thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
+    		try {
+    			thrust::sort_by_key(thrust::cuda::par.on(stream[tid]), dev_keys_ptr, dev_keys_ptr + cnt[tid], dev_data_ptr);
 
-    		// } catch(std::bad_alloc &e) {
-            //     #if GPU_LOCKING
-            //     pthread_mutex_unlock(&gpu_lock);
-            //     #endif
-    		// 	std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
-            //     cout.flush();
-    		// 	exit(1);
-    		// }
+    		} catch(std::bad_alloc &e) {
+                #if GPU_LOCKING
+                pthread_mutex_unlock(&gpu_lock);
+                #endif
+    			std::cerr << "[GPU] ~ Ran out of memory while sorting, " << GPUBufferSize << '\n';
+                cout.flush();
+    			exit(1);
+    		}
 
             #if GPU_LOCKING
             pthread_mutex_unlock(&gpu_lock);
@@ -1510,27 +1510,27 @@ void distanceTableNDGridBatches(
             // cout << "[GPU] ~ Copy size: " << cnt[tid] * sizeof(int) << '\n';
             // cout.flush();
 
-    		//thrust with streams into individual buffers for each batch
-    		// cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-    		// cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+    		// thrust with streams into individual buffers for each batch
+    		cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+    		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
-            // // cout << "[GPU] ~ Async memcpy of pointers\n";
-            // // cout.flush();
+            // cout << "[GPU] ~ Async memcpy of pointers\n";
+            // cout.flush();
 
-    		// //need to make sure the data is copied before constructing portion of the neighbor table
-    		// // cudaStreamSynchronize(stream[tid]);
+    		//need to make sure the data is copied before constructing portion of the neighbor table
+    		cudaStreamSynchronize(stream[tid]);
 
-            // // cout << "[GPU] ~ Stream synchronization\n";
-            // // cout.flush();
+            // cout << "[GPU] ~ Stream synchronization\n";
+            // cout.flush();
 
     		double tableconstuctstart = omp_get_wtime();
-    		// //set the number of neighbors in the pointer struct:
-    		// (*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
-    		// (*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
+    		//set the number of neighbors in the pointer struct:
+    		(*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
+    		(*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
 
-    		// constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
+    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
 
-    		//cout <<"In make neighbortable. Data array ptr: "<<(*pointersToNeighbors)[i].dataPtr<<" , size of data array: "<<(*pointersToNeighbors)[i].sizeOfDataArr;cout.flush();
+    		// cout <<"In make neighbortable. Data array ptr: "<<(*pointersToNeighbors)[i].dataPtr<<" , size of data array: "<<(*pointersToNeighbors)[i].sizeOfDataArr;cout.flush();
 
     		double tableconstuctend = omp_get_wtime();
 
@@ -1564,6 +1564,30 @@ void distanceTableNDGridBatches(
         // }
 
     }
+    std::ofstream outfile ("mod_neighbor_table.csv",std::ofstream::binary);
+    outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
+    int neighborCnt = 0;
+    for (int i = 0; i < (*DBSIZE); i++) {
+        neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
+        neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
+
+        outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
+        std::vector<unsigned int> neighbors = {};
+        for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
+            neighbors.push_back(originPointIndex[j]);
+        }
+        std::sort(neighbors.begin(), neighbors.end());
+        for (int j = 0; j < neighborCnt; j++) {
+            outfile << neighbors[j];
+            if (j == neighborCnt - 1) {
+                outfile << endl;
+            }
+            else {
+                outfile << ",";
+            }
+        }
+    }
+    cout << "WROTE ALL NEIGHBORS" << endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
