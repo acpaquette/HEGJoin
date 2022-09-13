@@ -1616,7 +1616,7 @@ void distanceTableNDGridBatches(
         outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
         std::vector<unsigned int> neighbors = {};
         for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
-            neighbors.push_back(originPointIndex[j]);
+            neighbors.push_back(tableRecord.dataPtr[j]);
         }
         std::sort(neighbors.begin(), neighbors.end());
         for (int j = 0; j < neighborCnt; j++) {
@@ -1629,7 +1629,6 @@ void distanceTableNDGridBatches(
             }
         }
     }
-    cout << "WROTE ALL NEIGHBORS" << endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
