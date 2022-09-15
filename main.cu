@@ -306,8 +306,8 @@ int main(int argc, char * argv[])
 
                 fprintf(stdout, "[EGO] ~ EGO-sorting of A\n");
                 double tStartEGOSort = omp_get_wtime();
-                std::stable_sort(A, A + A_sz, egoSortFunction);
-                // boost::sort::sample_sort(A, A + A_sz, egoSortFunction, CPU_THREADS);
+                // std::stable_sort(A, A + A_sz, egoSortFunction);
+                boost::sort::sample_sort(A, A + A_sz, egoSortFunction, CPU_THREADS);
                 double tEndEGOSort = omp_get_wtime();
                 egoSort = tEndEGOSort - tStartEGOSort;
                 fprintf(stdout, "[EGO] ~ Done EGO-sorting in %f\n", egoSort);
