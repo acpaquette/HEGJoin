@@ -11,7 +11,7 @@
 #define BLOCKSIZE 256
 
 // Number of GPU streams
-#define GPUSTREAMS 1
+#define GPUSTREAMS 3
 
 // Number of CPU threads to use when joining with the CPU
 // #define CPU_THREADS 8
