@@ -1321,7 +1321,7 @@ void distanceTableNDGridBatches(
                 cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
         		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
-                cudaStreamSynchronize(stream[tid]);
+                // cudaStreamSynchronize(stream[tid]);
 
                 double tableconstuctstart = omp_get_wtime();
         		//set the number of neighbors in the pointer struct:
@@ -1606,29 +1606,29 @@ void distanceTableNDGridBatches(
         // }
 
     }
-    std::ofstream outfile ("neighbor_table.csv",std::ofstream::binary);
-    outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
-    int neighborCnt = 0;
-    for (int i = 0; i < (*DBSIZE); i++) {
-        neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
-        neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
+    // std::ofstream outfile ("neighbor_table.csv",std::ofstream::binary);
+    // outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
+    // int neighborCnt = 0;
+    // for (int i = 0; i < (*DBSIZE); i++) {
+    //     neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
+    //     neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
 
-        outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
-        std::vector<unsigned int> neighbors = {};
-        for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
-            neighbors.push_back(tableRecord.dataPtr[j]);
-        }
-        std::sort(neighbors.begin(), neighbors.end());
-        for (int j = 0; j < neighborCnt; j++) {
-            outfile << neighbors[j];
-            if (j == neighborCnt - 1) {
-                outfile << endl;
-            }
-            else {
-                outfile << ",";
-            }
-        }
-    }
+    //     outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
+    //     std::vector<unsigned int> neighbors = {};
+    //     for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
+    //         neighbors.push_back(tableRecord.dataPtr[j]);
+    //     }
+    //     std::sort(neighbors.begin(), neighbors.end());
+    //     for (int j = 0; j < neighborCnt; j++) {
+    //         outfile << neighbors[j];
+    //         if (j == neighborCnt - 1) {
+    //             outfile << endl;
+    //         }
+    //         else {
+    //             outfile << ",";
+    //         }
+    //     }
+    // }
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
