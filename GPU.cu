@@ -975,6 +975,9 @@ void distanceTableNDGridBatches(
   	///////////////////
 
 	//THE NUMBER OF POINTERS IS EQUAL TO THE NUMBER OF BATCHES
+    unsigned int datasetSize = *DBSIZE;
+    unsigned int NBLOCKS = 4096 * 32;
+    numBatches = ceil(datasetSize / NBLOCKS);
 	for (int i = 0; i < numBatches; i++)
     {
 		int *ptr;
@@ -1100,7 +1103,6 @@ void distanceTableNDGridBatches(
   	//have 1 extra data point to process, and we calculate which batch numbers will
   	//have that.  The batchSize is the lower value (+1 is added to the first ones)
 
-    unsigned int datasetSize = *DBSIZE;
 
     // unsigned int batchSize = (*DBSIZE) / numBatches;
     unsigned int batchSize = datasetSize / numBatches;
@@ -1340,13 +1342,26 @@ void distanceTableNDGridBatches(
         //FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
     	//i=0...numBatches
         
-        const uint64_t ITERATIONS = (uint64_t)ceil((1.0 * (*DBSIZE)) / (1.0 * PBLOCKS));
+        size_t freeMem = 0;
+        size_t totalMem = 0;
+        int memGetSuccess = cudaMemGetInfo(&freeMem, &totalMem);
+        if (memGetSuccess != cudaSuccess) {
+            cout << "You probably don't have a gpu, in which case, how did you get this far?" << endl;
+            exit(memGetSuccess);
+        }
+
+        // Compute Total blocks computable in a single instances based on estimated size
+        // Have to convert esitmatedNeighbors into bytes
+        uint64_t NBLOCKS = datasetSize / ceil(estimatedNeighbors * 2 * 4 / (GPUBufferSize));
+        cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
+        const uint64_t ITERATIONS = (uint64_t)ceil((1.0 * datasetSize) / (1.0 * NBLOCKS));
         #if !SILENT_GPU
             cout << "[GPU] ~ Total Iterations: " << ITERATIONS << '\n';
             cout.flush();
         #endif
+
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < (*DBSIZE); i+=PBLOCKS)
+    	for (int i = 0; i < datasetSize; i+=NBLOCKS)
         // for (int i = 0; i < 9; ++i)
     	{
             int tid = omp_get_thread_num();
@@ -1354,13 +1369,13 @@ void distanceTableNDGridBatches(
             double tStartLoop = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i / PBLOCKS << '\n';
+                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i / NBLOCKS << '\n';
                 cout.flush();
             #endif
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-
+            // batchBegin[tid] = (i * NBLOCKS);
             errCode = cudaMemcpy( &dev_batchBegin[tid], &i, sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
@@ -1369,9 +1384,9 @@ void distanceTableNDGridBatches(
                 cout.flush();
             }
 
-            N[tid] = PBLOCKS;
-            if ((i + PBLOCKS) > (*DBSIZE)) {
-                N[tid] = (*DBSIZE) - i;
+            N[tid] = NBLOCKS;
+            if ((i + NBLOCKS) > datasetSize) {
+                N[tid] = datasetSize - i;
             }
             #if !SILENT_GPU
                 cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
@@ -1404,7 +1419,7 @@ void distanceTableNDGridBatches(
 
     		// const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
             #if !SILENT_GPU
-                cout << "[GPU] ~ Total blocks: " << PBLOCKS << '\n';
+                cout << "[GPU] ~ Total blocks: " << NBLOCKS << '\n';
                 cout.flush();
             #endif
 
@@ -1416,12 +1431,12 @@ void distanceTableNDGridBatches(
     		//0 is shared memory pool
             cudaEventRecord(startKernel[tid], stream[tid]);
             #if SORT_BY_WORKLOAD
-                kernelNDGridIndexGlobal<<< PBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
+                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid]);
             #else
-                kernelNDGridIndexGlobal<<< PBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid]);
@@ -1524,10 +1539,10 @@ void distanceTableNDGridBatches(
 
     		double tableconstuctstart = omp_get_wtime();
     		//set the number of neighbors in the pointer struct:
-    		(*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
-    		(*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
+    		(*pointersToNeighbors)[(i / NBLOCKS)].sizeOfDataArr = cnt[tid];
+    		(*pointersToNeighbors)[(i / NBLOCKS)].dataPtr = new int[cnt[tid]];
 
-    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
+    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[(i / NBLOCKS)].dataPtr, &cnt[tid]);
 
     		// cout <<"In make neighbortable. Data array ptr: "<<(*pointersToNeighbors)[i].dataPtr<<" , size of data array: "<<(*pointersToNeighbors)[i].sizeOfDataArr;cout.flush();
 
@@ -1586,7 +1601,6 @@ void distanceTableNDGridBatches(
     //         }
     //     }
     // }
-    cout << "WROTE ALL NEIGHBORS" << endl;
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)
