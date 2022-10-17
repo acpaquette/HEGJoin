@@ -976,8 +976,27 @@ void distanceTableNDGridBatches(
 
 	//THE NUMBER OF POINTERS IS EQUAL TO THE NUMBER OF BATCHES
     unsigned int datasetSize = *DBSIZE;
-    unsigned int NBLOCKS = 4096 * 32;
-    numBatches = ceil(datasetSize / NBLOCKS);
+    size_t freeMem = 0;
+    size_t totalMem = 0;
+    int memGetSuccess = cudaMemGetInfo(&freeMem, &totalMem);
+    if (memGetSuccess != cudaSuccess) {
+        cout << "You probably don't have a gpu, in which case, how did you get this far?" << endl;
+        exit(memGetSuccess);
+    }
+    #if !SILENT_GPU
+        cout << "[GPU] ~ Total Memory: " << totalMem << '\n';
+        cout.flush();
+    #endif
+
+    // Compute Total blocks computable in a single instances based on estimated size
+    // Have to convert esitmatedNeighbors into bytes
+    uint64_t NBLOCKS = datasetSize / ceil(1.0 * (estimatedNeighbors * 2 * sizeof(int)) / (0.9 * GPUBufferSize));
+    cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
+    #if !SILENT_GPU
+        cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
+        cout.flush();
+    #endif
+    numBatches = (uint64_t)ceil((1.0 * datasetSize) / (1.0 * NBLOCKS));
 	for (int i = 0; i < numBatches; i++)
     {
 		int *ptr;
@@ -1341,27 +1360,8 @@ void distanceTableNDGridBatches(
 
         //FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
     	//i=0...numBatches
-        
-        size_t freeMem = 0;
-        size_t totalMem = 0;
-        int memGetSuccess = cudaMemGetInfo(&freeMem, &totalMem);
-        if (memGetSuccess != cudaSuccess) {
-            cout << "You probably don't have a gpu, in which case, how did you get this far?" << endl;
-            exit(memGetSuccess);
-        }
-
-        // Compute Total blocks computable in a single instances based on estimated size
-        // Have to convert esitmatedNeighbors into bytes
-        uint64_t NBLOCKS = datasetSize / ceil(estimatedNeighbors * 2 * 4 / (GPUBufferSize));
-        cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
-        const uint64_t ITERATIONS = (uint64_t)ceil((1.0 * datasetSize) / (1.0 * NBLOCKS));
-        #if !SILENT_GPU
-            cout << "[GPU] ~ Total Iterations: " << ITERATIONS << '\n';
-            cout.flush();
-        #endif
-
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < datasetSize; i+=NBLOCKS)
+    	for (int i = 0; i < numBatches; i++)
         // for (int i = 0; i < 9; ++i)
     	{
             int tid = omp_get_thread_num();
@@ -1369,14 +1369,14 @@ void distanceTableNDGridBatches(
             double tStartLoop = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i / NBLOCKS << '\n';
+                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << " with block: " << (i * NBLOCKS) <<'\n';
                 cout.flush();
             #endif
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-            // batchBegin[tid] = (i * NBLOCKS);
-            errCode = cudaMemcpy( &dev_batchBegin[tid], &i, sizeof(unsigned int), cudaMemcpyHostToDevice );
+            batchBegin[tid] = (i * NBLOCKS);
+            errCode = cudaMemcpy( &dev_batchBegin[tid], &batchBegin[tid], sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
                 cout << "[GPU] ~ Error: queue index copy to device -- error with code " << errCode << '\n';
@@ -1385,8 +1385,8 @@ void distanceTableNDGridBatches(
             }
 
             N[tid] = NBLOCKS;
-            if ((i + NBLOCKS) > datasetSize) {
-                N[tid] = datasetSize - i;
+            if (((i + 1) * NBLOCKS) > datasetSize) {
+                N[tid] = datasetSize - (i * NBLOCKS);
             }
             #if !SILENT_GPU
                 cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
@@ -1532,18 +1532,17 @@ void distanceTableNDGridBatches(
             // cout.flush();
 
     		//need to make sure the data is copied before constructing portion of the neighbor table
-    		cudaStreamSynchronize(stream[tid]);
+    		// cudaStreamSynchronize(stream[tid]);
 
             // cout << "[GPU] ~ Stream synchronization\n";
             // cout.flush();
 
     		double tableconstuctstart = omp_get_wtime();
     		//set the number of neighbors in the pointer struct:
-    		(*pointersToNeighbors)[(i / NBLOCKS)].sizeOfDataArr = cnt[tid];
-    		(*pointersToNeighbors)[(i / NBLOCKS)].dataPtr = new int[cnt[tid]];
+    		(*pointersToNeighbors)[i].sizeOfDataArr = cnt[tid];
+    		(*pointersToNeighbors)[i].dataPtr = new int[cnt[tid]];
 
-    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[(i / NBLOCKS)].dataPtr, &cnt[tid]);
-
+    		constructNeighborTableKeyValueWithPtrs(pointIDKey[tid], pointInDistValue[tid], neighborTable, (*pointersToNeighbors)[i].dataPtr, &cnt[tid]);
     		// cout <<"In make neighbortable. Data array ptr: "<<(*pointersToNeighbors)[i].dataPtr<<" , size of data array: "<<(*pointersToNeighbors)[i].sizeOfDataArr;cout.flush();
 
     		double tableconstuctend = omp_get_wtime();
