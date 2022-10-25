@@ -410,8 +410,8 @@ __device__ void evaluateCell(
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
 
-		if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
-			printf("THREAD %d OF BLOCK %d, examining points: %d, %d", threadIdx.x, blockIdx.x, index[GridIndex].indexmin, index[GridIndex].indexmax);
+		if (blockIdx.x == 0 && threadIdx.x == 32) {
+			printf("THREAD %d OF BLOCK %d, examining points: %d, %d\n", threadIdx.x, blockIdx.x, index[GridIndex].indexmin, index[GridIndex].indexmax);
 		}
 		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=(*TPP)) {
 			uint64_t pointToCompare = (k + threadIdx.x);
@@ -765,8 +765,8 @@ __global__ void kernelNDGridIndexGlobal(
 
 	// uint64_t originPoint = (uint64_t)tid/TPP;
 	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/(*TPP)));
-	if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
-		printf("THREAD %d OF BLOCK %d, examining point: %d", threadIdx.x, blockIdx.x, pointId);
+	if (blockIdx.x == 0) {
+		printf("THREAD %d OF BLOCK %d, examining point: %d\n", threadIdx.x, blockIdx.x, pointId);
 	}
 	// if (threadIdx.x == 0) {
 	// 	# if __CUDA_ARCH__>=200
