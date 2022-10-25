@@ -395,7 +395,7 @@ __device__ void evaluateCell(
 		int * pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		unsigned int * nDCellIDs)
+		unsigned int * TPP)
 {
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
@@ -410,8 +410,10 @@ __device__ void evaluateCell(
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
 
-
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=BLOCKSIZE) {
+		if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+			printf("THREAD %d OF BLOCK %d, examining points: %d, %d", threadIdx.x, blockIdx.x, index[GridIndex].indexmin, index[GridIndex].indexmax);
+		}
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=(*TPP)) {
 			uint64_t pointToCompare = (k + threadIdx.x);
 			if (!(pointToCompare > index[GridIndex].indexmax)) {
 				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
@@ -750,7 +752,8 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMask,
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
-		int * pointInDistVal)
+		int * pointInDistVal,
+		unsigned int * TPP)
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
@@ -760,7 +763,11 @@ __global__ void kernelNDGridIndexGlobal(
 		return;
 	}
 
-	unsigned int pointId = (*batchBegin) + blockIdx.x;
+	// uint64_t originPoint = (uint64_t)tid/TPP;
+	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/(*TPP)));
+	if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+		printf("THREAD %d OF BLOCK %d, examining point: %d", threadIdx.x, blockIdx.x, pointId);
+	}
 	// if (threadIdx.x == 0) {
 	// 	# if __CUDA_ARCH__>=200
 	// 	printf("BLOCK %d COMPUTING %d\n", blockIdx.x, pointId);
@@ -812,7 +819,7 @@ __global__ void kernelNDGridIndexGlobal(
 			}
 
 			evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index,
-					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, nDCellIDs);
+					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, TPP);
 
 		} //end loop body
 
