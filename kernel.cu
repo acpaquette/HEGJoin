@@ -395,7 +395,7 @@ __device__ void evaluateCell(
 		int * pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		unsigned int * TPP)
+		const unsigned int TPP)
 {
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
@@ -410,12 +410,15 @@ __device__ void evaluateCell(
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
 
-		if (blockIdx.x == 0 && threadIdx.x == 32) {
-			printf("THREAD %d OF BLOCK %d, examining points: %d, %d\n", threadIdx.x, blockIdx.x, index[GridIndex].indexmin, index[GridIndex].indexmax);
+		// 3207 - 3208 / 2
+		// 1604
+		unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
+		if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+			printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % (*TPP)));
 		}
 		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=(*TPP)) {
-			uint64_t pointToCompare = (k + threadIdx.x);
-			if (!(pointToCompare > index[GridIndex].indexmax)) {
+			uint64_t pointToCompare = (k + (threadIdx.x % (*TPP)));
+			if (pointToCompare <= index[GridIndex].indexmax) {
 				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 			}
 		}
@@ -758,16 +761,16 @@ __global__ void kernelNDGridIndexGlobal(
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 
-	if (*N <= (tid / BLOCKSIZE))
+	if ((tid / BLOCKSIZE) > *N)
 	{
 		return;
 	}
 
 	// uint64_t originPoint = (uint64_t)tid/TPP;
 	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/(*TPP)));
-	if (blockIdx.x == 0) {
-		printf("THREAD %d OF BLOCK %d, examining point: %d\n", threadIdx.x, blockIdx.x, pointId);
-	}
+	// if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+	// 	printf("THREAD %d OF BLOCK %d, examining point: %d\n", threadIdx.x, blockIdx.x, pointId);
+	// }
 	// if (threadIdx.x == 0) {
 	// 	# if __CUDA_ARCH__>=200
 	// 	printf("BLOCK %d COMPUTING %d\n", blockIdx.x, pointId);
