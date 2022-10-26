@@ -990,8 +990,14 @@ void distanceTableNDGridBatches(
 
     // Compute Total blocks computable in a single instances based on estimated size
     // Have to convert esitmatedNeighbors into bytes
+    const unsigned int tpp = 32;
+    cout << "DEFINED TPP AS " << tpp << endl;
+
     numBatches = ceil(1.0 * (estimatedNeighbors * 2 * sizeof(int)) / (0.9 * GPUBufferSize));
-    uint64_t NBLOCKS = datasetSize / numBatches;
+    uint64_t pointsPerBlock = BLOCKSIZE / tpp;
+    uint64_t NBLOCKS = (1.0 * datasetSize) / (1.0 * numBatches);
+    NBLOCKS = NBLOCKS + (NBLOCKS % BLOCKSIZE);
+    numBatches = datasetSize / NBLOCKS;
     #if !SILENT_GPU
         cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
         cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
@@ -1143,23 +1149,6 @@ void distanceTableNDGridBatches(
     if (errCode != cudaSuccess)
     {
         cout << "[GPU] ~ Error: Alloc queue index -- error with code " << errCode << '\n';
-        cout.flush();
-    }
-
-    unsigned int tpp = 32;
-    cout << "DEFINED TPP AS " << tpp << endl;
-    unsigned int * dev_tpp;
-    errCode = cudaMalloc( (void**)&dev_tpp, sizeof(unsigned int));
-    if (errCode != cudaSuccess)
-    {
-        cout << "[GPU] ~ Error: Alloc tpp -- error with code " << errCode << '\n';
-        cout.flush();
-    }
-    errCode = cudaMemcpy( dev_tpp, &tpp, sizeof(unsigned int), cudaMemcpyHostToDevice );
-    if (errCode != cudaSuccess)
-    {
-        cout << "[GPU] ~ Error: tpp copy to device -- error with code " << errCode << '\n';
-        cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
         cout.flush();
     }
 
@@ -1392,7 +1381,8 @@ void distanceTableNDGridBatches(
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-            batchBegin[tid] = (i * NBLOCKS);
+            int blockResultSize = NBLOCKS * pointsPerBlock;
+            batchBegin[tid] = (i * blockResultSize);
             errCode = cudaMemcpy( &dev_batchBegin[tid], &batchBegin[tid], sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
@@ -1401,9 +1391,9 @@ void distanceTableNDGridBatches(
                 cout.flush();
             }
 
-            N[tid] = NBLOCKS;
-            if (((i + 1) * NBLOCKS) > datasetSize) {
-                N[tid] = datasetSize - (i * NBLOCKS);
+            N[tid] = blockResultSize;
+            if (((i + 1) * blockResultSize) > datasetSize) {
+                N[tid] = datasetSize - (i * blockResultSize);
             }
             #if !SILENT_GPU
                 cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
@@ -1451,12 +1441,12 @@ void distanceTableNDGridBatches(
                 kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_tpp);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
             #else
                 kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_tpp);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
             #endif
             cudaEventRecord(stopKernel[tid], stream[tid]);
 
