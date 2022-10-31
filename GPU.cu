@@ -995,7 +995,7 @@ void distanceTableNDGridBatches(
 
     numBatches = ceil(1.0 * (estimatedNeighbors * 2 * sizeof(int)) / (0.9 * GPUBufferSize));
     uint64_t pointsPerBlock = BLOCKSIZE / tpp;
-    uint64_t NBLOCKS = (1.0 * datasetSize) / (1.0 * numBatches);
+    uint64_t NBLOCKS = ceil(((1.0 * datasetSize) / (1.0 * numBatches)) / (1.0 * pointsPerBlock));
     // NBLOCKS = NBLOCKS + (NBLOCKS % BLOCKSIZE);
     // numBatches = datasetSize / NBLOCKS;
     cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
@@ -1384,8 +1384,8 @@ void distanceTableNDGridBatches(
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-            int blockResultSize = NBLOCKS / pointsPerBlock;
-            batchBegin[tid] = (i * blockResultSize);
+            // int blockResultSize = NBLOCKS;
+            batchBegin[tid] = (i * NBLOCKS);
             errCode = cudaMemcpy( &dev_batchBegin[tid], &batchBegin[tid], sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
@@ -1394,9 +1394,9 @@ void distanceTableNDGridBatches(
                 cout.flush();
             }
 
-            N[tid] = blockResultSize;
-            if (((i + 1) * blockResultSize) > datasetSize) {
-                N[tid] = datasetSize - (i * blockResultSize);
+            N[tid] = NBLOCKS;
+            if (((i + 1) * NBLOCKS) > datasetSize) {
+                N[tid] = datasetSize - (i * NBLOCKS);
             }
             #if !SILENT_GPU
                 cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
@@ -1441,7 +1441,7 @@ void distanceTableNDGridBatches(
     		//0 is shared memory pool
             cudaEventRecord(startKernel[tid], stream[tid]);
             #if SORT_BY_WORKLOAD
-                kernelNDGridIndexGlobal<<< 1, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
+                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);

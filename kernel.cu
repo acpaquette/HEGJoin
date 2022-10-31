@@ -761,7 +761,7 @@ __global__ void kernelNDGridIndexGlobal(
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 
-	if ((tid / (BLOCKSIZE / (BLOCKSIZE / TPP))) > *N)
+	if ((tid / BLOCKSIZE) > *N)
 	{
 		return;
 	}
