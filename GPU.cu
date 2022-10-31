@@ -996,13 +996,16 @@ void distanceTableNDGridBatches(
     numBatches = ceil(1.0 * (estimatedNeighbors * 2 * sizeof(int)) / (0.9 * GPUBufferSize));
     uint64_t pointsPerBlock = BLOCKSIZE / tpp;
     uint64_t NBLOCKS = (1.0 * datasetSize) / (1.0 * numBatches);
-    NBLOCKS = NBLOCKS + (NBLOCKS % BLOCKSIZE);
-    numBatches = datasetSize / NBLOCKS;
-    #if !SILENT_GPU
-        cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
-        cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
-        cout.flush();
-    #endif
+    // NBLOCKS = NBLOCKS + (NBLOCKS % BLOCKSIZE);
+    // numBatches = datasetSize / NBLOCKS;
+    cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
+    cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
+    cout.flush();
+    // #if !SILENT_GPU
+    //     cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
+    //     cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
+    //     cout.flush();
+    // #endif
 	for (int i = 0; i < numBatches; i++)
     {
 		int *ptr;
@@ -1236,12 +1239,12 @@ void distanceTableNDGridBatches(
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                         dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_tpp);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
                 #else
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                         dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], dev_tpp);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
                 #endif
                 cudaEventRecord(stopKernel[tid], stream[tid]);
 
@@ -1367,7 +1370,7 @@ void distanceTableNDGridBatches(
         //FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
     	//i=0...numBatches
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < numBatches; i++)
+    	for (int i = 0; i < 1; i++)
         // for (int i = 0; i < 9; ++i)
     	{
             int tid = omp_get_thread_num();
@@ -1381,7 +1384,7 @@ void distanceTableNDGridBatches(
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-            int blockResultSize = NBLOCKS * pointsPerBlock;
+            int blockResultSize = NBLOCKS / pointsPerBlock;
             batchBegin[tid] = (i * blockResultSize);
             errCode = cudaMemcpy( &dev_batchBegin[tid], &batchBegin[tid], sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
@@ -1438,7 +1441,7 @@ void distanceTableNDGridBatches(
     		//0 is shared memory pool
             cudaEventRecord(startKernel[tid], stream[tid]);
             #if SORT_BY_WORKLOAD
-                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
+                kernelNDGridIndexGlobal<<< 1, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid], 
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr, dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
                     dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
@@ -1584,29 +1587,29 @@ void distanceTableNDGridBatches(
         // }
 
     }
-    // std::ofstream outfile ("mod_neighbor_table.csv",std::ofstream::binary);
-    // outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
-    // int neighborCnt = 0;
-    // for (int i = 0; i < (*DBSIZE); i++) {
-    //     neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
-    //     neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
+    std::ofstream outfile ("new_mod_neighbor_table.csv",std::ofstream::binary);
+    outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
+    int neighborCnt = 0;
+    for (int i = 0; i < (*DBSIZE); i++) {
+        neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
+        neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
 
-    //     outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
-    //     std::vector<unsigned int> neighbors = {};
-    //     for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
-    //         neighbors.push_back(tableRecord.dataPtr[j]);
-    //     }
-    //     std::sort(neighbors.begin(), neighbors.end());
-    //     for (int j = 0; j < neighborCnt; j++) {
-    //         outfile << neighbors[j];
-    //         if (j == neighborCnt - 1) {
-    //             outfile << endl;
-    //         }
-    //         else {
-    //             outfile << ",";
-    //         }
-    //     }
-    // }
+        outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
+        std::vector<unsigned int> neighbors = {};
+        for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
+            neighbors.push_back(tableRecord.dataPtr[j]);
+        }
+        std::sort(neighbors.begin(), neighbors.end());
+        for (int j = 0; j < neighborCnt; j++) {
+            outfile << neighbors[j];
+            if (j == neighborCnt - 1) {
+                outfile << endl;
+            }
+            else {
+                outfile << ",";
+            }
+        }
+    }
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)

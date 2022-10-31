@@ -414,10 +414,10 @@ __device__ void evaluateCell(
 		// 1604
 		unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 		if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
-			printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % (*TPP)));
+			// printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % TPP));
 		}
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=(*TPP)) {
-			uint64_t pointToCompare = (k + (threadIdx.x % (*TPP)));
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=TPP) {
+			uint64_t pointToCompare = (k + (threadIdx.x % TPP));
 			if (pointToCompare <= index[GridIndex].indexmax) {
 				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 			}
@@ -756,18 +756,18 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
 		int * pointInDistVal,
-		unsigned int * TPP)
+		const unsigned int TPP)
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 
-	if ((tid / BLOCKSIZE) > *N)
+	if ((tid / (BLOCKSIZE / (BLOCKSIZE / TPP))) > *N)
 	{
 		return;
 	}
 
 	// uint64_t originPoint = (uint64_t)tid/TPP;
-	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/(*TPP)));
+	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/TPP));
 	// if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
 	// 	printf("THREAD %d OF BLOCK %d, examining point: %d\n", threadIdx.x, blockIdx.x, pointId);
 	// }
