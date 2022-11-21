@@ -90,7 +90,7 @@ __device__ void evaluateCell(
 		int* pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		const unsigned int TPP);
+		const unsigned int tpp);
 
 
 __forceinline__ __device__ void evalPointUnicompOrigin(
@@ -267,7 +267,7 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
 		int * pointInDistVal,
-		const unsigned int TPP);
+		const unsigned int tpp);
 
 
 __global__ void kernelNDGridIndexGlobalUnicomp(

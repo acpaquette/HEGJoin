@@ -990,14 +990,14 @@ void distanceTableNDGridBatches(
 
     // Compute Total blocks computable in a single instances based on estimated size
     // Have to convert esitmatedNeighbors into bytes
-    const unsigned int tpp = 32;
+    const unsigned int tpp = TPP;
     cout << "DEFINED TPP AS " << tpp << endl;
 
     numBatches = ceil(1.0 * (estimatedNeighbors * 2 * sizeof(int)) / (0.9 * GPUBufferSize));
     uint64_t pointsPerBlock = BLOCKSIZE / tpp;
     uint64_t NBLOCKS = ceil(((1.0 * datasetSize) / (1.0 * numBatches)) / (1.0 * pointsPerBlock));
     // NBLOCKS = NBLOCKS + (NBLOCKS % BLOCKSIZE);
-    // numBatches = datasetSize / NBLOCKS;
+    numBatches = ceil((1.0 *datasetSize) / ((1.0 * NBLOCKS) * (1.0 * pointsPerBlock)));
     cout << "[GPU] ~ Number of blocks for a single instance: " << NBLOCKS << endl;
     cout << "[GPU] ~ Total Iterations: " << numBatches << '\n';
     cout.flush();
@@ -1370,7 +1370,7 @@ void distanceTableNDGridBatches(
         //FOR LOOP OVER THE NUMBER OF BATCHES STARTS HERE
     	//i=0...numBatches
         #pragma omp parallel for schedule(dynamic, 1) reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
-    	for (int i = 0; i < 1; i++)
+    	for (int i = 0; i < numBatches; i++)
         // for (int i = 0; i < 9; ++i)
     	{
             int tid = omp_get_thread_num();
@@ -1384,8 +1384,8 @@ void distanceTableNDGridBatches(
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
-            // int blockResultSize = NBLOCKS;
-            batchBegin[tid] = (i * NBLOCKS);
+            int blockResultSize = NBLOCKS * pointsPerBlock;
+            batchBegin[tid] = (i * blockResultSize);
             errCode = cudaMemcpy( &dev_batchBegin[tid], &batchBegin[tid], sizeof(unsigned int), cudaMemcpyHostToDevice );
             if (errCode != cudaSuccess)
             {
@@ -1395,20 +1395,20 @@ void distanceTableNDGridBatches(
             }
 
             N[tid] = NBLOCKS;
-            if (((i + 1) * NBLOCKS) > datasetSize) {
-                N[tid] = datasetSize - (i * NBLOCKS);
+            if (((i + 1) * blockResultSize) > datasetSize) {
+                N[tid] = datasetSize - (i * blockResultSize);
+                N[tid] /= pointsPerBlock;
             }
             #if !SILENT_GPU
                 cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
                 cout.flush();
             #endif
-
             nbQueryPoint[tid] += N[tid];
 
     		//set relevant parameters for the batched execution that get reset
 
     		//copy N to device
-    		//N IS THE NUMBER OF THREADS
+    		//N IS THE NUMBER OF THREADS TIMES THE POINTS PER BLOCK
     		errCode = cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
     		if (errCode != cudaSuccess)
             {
@@ -1587,29 +1587,29 @@ void distanceTableNDGridBatches(
         // }
 
     }
-    std::ofstream outfile ("new_mod_neighbor_table.csv",std::ofstream::binary);
-    outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
-    int neighborCnt = 0;
-    for (int i = 0; i < (*DBSIZE); i++) {
-        neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
-        neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
+    // std::ofstream outfile ("new_mod_neighbor_table.csv",std::ofstream::binary);
+    // outfile << "pointIdx|originalPointIdx|neighborCnt|neighbors" << endl;
+    // int neighborCnt = 0;
+    // for (int i = 0; i < (*DBSIZE); i++) {
+    //     neighborTableLookup tableRecord = neighborTable[originPointIndex[i]];
+    //     neighborCnt = tableRecord.indexmax - tableRecord.indexmin;
 
-        outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
-        std::vector<unsigned int> neighbors = {};
-        for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
-            neighbors.push_back(tableRecord.dataPtr[j]);
-        }
-        std::sort(neighbors.begin(), neighbors.end());
-        for (int j = 0; j < neighborCnt; j++) {
-            outfile << neighbors[j];
-            if (j == neighborCnt - 1) {
-                outfile << endl;
-            }
-            else {
-                outfile << ",";
-            }
-        }
-    }
+    //     outfile << i << "|" << originPointIndex[i] << "|" << neighborCnt << "|";
+    //     std::vector<unsigned int> neighbors = {};
+    //     for (int j = tableRecord.indexmin; j < tableRecord.indexmax; j++) {
+    //         neighbors.push_back(tableRecord.dataPtr[j]);
+    //     }
+    //     std::sort(neighbors.begin(), neighbors.end());
+    //     for (int j = 0; j < neighborCnt; j++) {
+    //         outfile << neighbors[j];
+    //         if (j == neighborCnt - 1) {
+    //             outfile << endl;
+    //         }
+    //         else {
+    //             outfile << ",";
+    //         }
+    //     }
+    // }
 
     unsigned int nbQueryPointTotal = 0;
     for (int i = 0; i < GPUSTREAMS; ++i)

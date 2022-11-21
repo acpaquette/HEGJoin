@@ -395,7 +395,7 @@ __device__ void evaluateCell(
 		int * pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		const unsigned int TPP)
+		const unsigned int tpp)
 {
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
@@ -412,12 +412,12 @@ __device__ void evaluateCell(
 
 		// 3207 - 3208 / 2
 		// 1604
-		unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
-		if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
-			// printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % TPP));
-		}
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=TPP) {
-			uint64_t pointToCompare = (k + (threadIdx.x % TPP));
+		// unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
+		// if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+		// 	printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % tpp));
+		// }
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=tpp) {
+			uint64_t pointToCompare = (k + (threadIdx.x % tpp));
 			if (pointToCompare <= index[GridIndex].indexmax) {
 				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
 			}
@@ -756,20 +756,25 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
 		int * pointInDistVal,
-		const unsigned int TPP)
+		const unsigned int tpp)
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
+	double test = tid / BLOCKSIZE;
 
-	if ((tid / BLOCKSIZE) > *N)
+	// if (blockIdx.x == 519 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+	// 	printf("THREAD %d OF BLOCK %d, stopped executing: %d\n", threadIdx.x, blockIdx.x, floor(test) >= *N);
+	// 	printf("THREAD %d OF BLOCK %d, size N: %f, %d\n", threadIdx.x, blockIdx.x, floor(test), *N);
+	// }
+	if (floor(test) >= *N)
 	{
 		return;
 	}
 
-	// uint64_t originPoint = (uint64_t)tid/TPP;
-	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/TPP));
-	// if (blockIdx.x == 1604 && (threadIdx.x == 0 || threadIdx.x == 32)) {
-	// 	printf("THREAD %d OF BLOCK %d, examining point: %d\n", threadIdx.x, blockIdx.x, pointId);
+	// uint64_t originPoint = (uint64_t)tid/tpp;
+	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/tpp));
+	// if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+	// 	printf("THREAD %d OF BLOCK %d, max tid: %d\n", threadIdx.x, blockIdx.x, N[(threadIdx.x / tpp)]);
 	// }
 	// if (threadIdx.x == 0) {
 	// 	# if __CUDA_ARCH__>=200
@@ -822,7 +827,7 @@ __global__ void kernelNDGridIndexGlobal(
 			}
 
 			evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index,
-					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, TPP);
+					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, tpp);
 
 		} //end loop body
 

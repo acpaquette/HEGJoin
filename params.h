@@ -12,7 +12,7 @@
 // #define PBLOCKS 4096
 
 // Number of GPU streams
-#define GPUSTREAMS 1
+#define GPUSTREAMS 3
 
 // Number of CPU threads to use when joining with the CPU
 // #define CPU_THREADS 8
@@ -36,7 +36,7 @@
 
 // Limits the output produced by the GPU when computing
 // 0 to output everything, 1 to limit the output
-#define SILENT_GPU 0
+#define SILENT_GPU 1
 
 // Metrics to evaluate the throughput of the CPU and GPU by counting the number of candidate points they refine
 #define COUNT_CANDIDATES 0
