@@ -46,7 +46,7 @@
 using std::cout;
 using std::endl;
 
-//sort ascending
+//sort ascendingG
 bool compareByPointValue(const key_val_sort &a, const key_val_sort &b)
 {
     return a.value_at_dim < b.value_at_dim;
@@ -581,7 +581,7 @@ unsigned long long GPUBatchEst_v2(
         cout.flush();
 	}
 
-    unsigned int GPUBufferSize = 50000000;
+    // unsigned int GPUBufferSize = 4000000;
     // unsigned int GPUBufferSize = 100000000;
 
     // uint64_t estimatedNeighbors = (uint64_t)*cnt_batchEst * (uint64_t)offsetRate;
@@ -635,6 +635,8 @@ unsigned long long GPUBatchEst_v2(
     }
 
     cout << "[GPU | RESULT] ~ Total estimated workload: " << fullEst << '\n';
+    // unsigned int GPUBufferSize = (1.0 * fullEst) * 0.01;
+    unsigned int GPUBufferSize = 112000;
 
     if (searchMode == SM_HYBRID_STATIC)
     {
@@ -1191,11 +1193,6 @@ void distanceTableNDGridBatches(
 
             do
             {
-                nbQueryPoint[tid] += gpuBatch.second - gpuBatch.first;
-                #if !SILENT_GPU
-                    printf("[GPU | T_%d] ~ New batch: begin = %d, end = %d\n", tid, gpuBatch.first, gpuBatch.second);
-                #endif
-
                 errCode = cudaMemcpy( &dev_batchBegin[tid], &gpuBatch.first, sizeof(unsigned int), cudaMemcpyHostToDevice );
             	if (errCode != cudaSuccess)
                 {
@@ -1214,6 +1211,11 @@ void distanceTableNDGridBatches(
                     cout.flush();
         		}
 
+                nbQueryPoint[tid] += N[tid];
+                #if !SILENT_GPU
+                    printf("[GPU | T_%d] ~ New batch: begin = %d, end = %d\n", tid, gpuBatch.first, gpuBatch.second);
+                #endif
+
                 // the batched result set size (reset to 0):
         		cnt[tid] = 0;
         		errCode = cudaMemcpyAsync( &dev_cnt[tid], &cnt[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
@@ -1224,7 +1226,7 @@ void distanceTableNDGridBatches(
                     cout.flush();
         		}
 
-                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
+                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / ((1.0 * BLOCKSIZE) / (1.0 * tpp)) );
                 #if !SILENT_GPU
                     cout << "[GPU] ~ Total blocks: " << TOTALBLOCKS << '\n';
                     cout.flush();
@@ -1307,7 +1309,7 @@ void distanceTableNDGridBatches(
                 #endif
 
                 cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
-            		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
+            	cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
                 // cudaStreamSynchronize(stream[tid]);
 

@@ -760,13 +760,12 @@ __global__ void kernelNDGridIndexGlobal(
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
-	double test = tid / BLOCKSIZE;
 
 	// if (blockIdx.x == 519 && (threadIdx.x == 0 || threadIdx.x == 32)) {
 	// 	printf("THREAD %d OF BLOCK %d, stopped executing: %d\n", threadIdx.x, blockIdx.x, floor(test) >= *N);
 	// 	printf("THREAD %d OF BLOCK %d, size N: %f, %d\n", threadIdx.x, blockIdx.x, floor(test), *N);
 	// }
-	if (floor(test) >= *N)
+	if ((tid / BLOCKSIZE) >= *N)
 	{
 		return;
 	}
