@@ -579,7 +579,6 @@ unsigned long long GPUBatchEst_v2(
         cout.flush();
 	}
 
-    unsigned int GPUBufferSize = 50000000;
     // unsigned int GPUBufferSize = 100000000;
 
     // uint64_t estimatedNeighbors = (uint64_t)*cnt_batchEst * (uint64_t)offsetRate;
@@ -633,6 +632,11 @@ unsigned long long GPUBatchEst_v2(
     }
 
     cout << "[GPU | RESULT] ~ Total estimated workload: " << fullEst << '\n';
+    unsigned int GPUBufferSize = 50000000;
+    unsigned int maxBatchSize = GPUBufferSize;
+    if ((1.0 * fullEst) * 0.01 < GPUBufferSize) {
+        maxBatchSize = ceil((1.0 * fullEst) * 0.01);
+    }
 
     if (searchMode == SM_HYBRID_STATIC)
     {
@@ -654,12 +658,15 @@ unsigned long long GPUBatchEst_v2(
             cout << "[GPU] ~ Too few batches, reducing GPUBufferSize to " << GPUBufferSize << '\n';
         }
     }
+    if (GPUBufferSize < maxBatchSize) {
+        maxBatchSize = GPUBufferSize;
+    }
 
     unsigned int batchBegin = 0;
     unsigned int batchEnd = 0;
     unsigned long long runningEst = 0;
     // Keeping 5% of margin to avoid a potential overflow of the buffer
-    unsigned int reserveBuffer = GPUBufferSize * 0.05;
+    unsigned int reserveBuffer = maxBatchSize * 0.05;
 
     if (searchMode == SM_HYBRID_STATIC)
     {
@@ -668,7 +675,7 @@ unsigned long long GPUBatchEst_v2(
             {
                 runningEst += estimatedFull[i];
                 // fullEst += estimatedFull[i];
-                if ((GPUBufferSize - reserveBuffer) <= runningEst)
+                if ((maxBatchSize - reserveBuffer) <= runningEst)
                 {
                     batchEnd = i;
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
@@ -710,7 +717,7 @@ unsigned long long GPUBatchEst_v2(
             {
                 runningEst += estimatedFull[i];
                 // fullEst += estimatedFull[i];
-                if ((GPUBufferSize - reserveBuffer) <= runningEst)
+                if ((maxBatchSize - reserveBuffer) <= runningEst)
                 {
                     batchEnd = i;
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
@@ -736,7 +743,7 @@ unsigned long long GPUBatchEst_v2(
         {
             runningEst += estimatedFull[i];
             // fullEst += estimatedFull[i];
-            if ((GPUBufferSize - reserveBuffer) <= runningEst)
+            if ((maxBatchSize - reserveBuffer) <= runningEst)
             {
                 batchEnd = i;
                 batches->push_back(std::make_pair(batchBegin, batchEnd));

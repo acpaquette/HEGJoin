@@ -8,7 +8,7 @@
 // #define NUMINDEXEDDIM 6
 
 // Number of GPU threads per block
-#define BLOCKSIZE 256
+// #define BLOCKSIZE 256
 
 // Number of GPU streams
 #define GPUSTREAMS 3
