@@ -7,9 +7,9 @@ CC = nvcc
 CXX = g++
 EXECUTABLE = main
 
-FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -arch=compute_61 -code=sm_61 -lpthread -lnvToolsExt -lcuda -lineinfo -I/home/apaquette/boost_1_75_0 -I/usr/local/cuda-11.4/include
+FLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -arch=compute_61 -code=sm_61 -lpthread -lnvToolsExt -lcuda -lineinfo -I/home/apaquette/boost_1_75_0 -I/usr/local/cuda/include
 CFLAGS = -c -D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES
-CFLAGS2 = -std=c++14 -O3 -fopenmp -lpthread -march=native -mavx -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wpedantic -Wunused -Wlogical-op
+CFLAGS2 = -std=c++14 -O3 -fopenmp -lpthread -march=native -mavx -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wpedantic -Wunused -Wlogical-op -I/usr/local/cuda/include
 
 all: $(EXECUTABLE)
 
