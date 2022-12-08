@@ -1,6 +1,7 @@
 #include <utility>
 #include <stdio.h>
 #include <vector>
+#include <iostream>
 
 #include "WorkQueue.h"
 #include "params.h"
@@ -55,7 +56,7 @@ std::pair<unsigned int, unsigned int> getBatchFromQueue(
     return std::make_pair(begin, end);
 }
 
-unsigned int gpuBatch = GPUSTREAMS;
+unsigned int gpuBatch = 0;
 std::pair<unsigned int, unsigned int> getBatchFromQueue_v2(
     std::vector< std::pair<unsigned int, unsigned int> > batches)
 {
@@ -64,23 +65,16 @@ std::pair<unsigned int, unsigned int> getBatchFromQueue_v2(
     {
         #pragma omp critical
         {
-            if(batches.size() == gpuBatch)
+
+            if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU)
             {
+                begin = batches[gpuBatch].first;
+                end = min(batches[gpuBatch].second, queueIndexCPU);
+                queueIndex = end;
+                gpuBatch++;
+            }else{
                 begin = 0;
                 end = 0;
-                queueIndex = (*(batches.end())).second;
-            }else{
-                if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU)
-                {
-                    begin = batches[gpuBatch].first;
-                    end = min(batches[gpuBatch].second, queueIndexCPU);
-                    queueIndex = end;
-                    gpuBatch++;
-                }else{
-                    begin = 0;
-                    end = 0;
-                    queueIndex = (*(batches.end())).second;
-                }
             }
         }
     }else{
@@ -107,7 +101,6 @@ std::pair<unsigned int, unsigned int> getBatchFromQueueCPU(
             }else{
                 begin = 0;
                 end = 0;
-                queueIndexCPU = 0;
             }
         }
     }else{
