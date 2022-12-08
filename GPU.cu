@@ -633,10 +633,6 @@ unsigned long long GPUBatchEst_v2(
 
     cout << "[GPU | RESULT] ~ Total estimated workload: " << fullEst << '\n';
     unsigned int GPUBufferSize = 50000000;
-    unsigned int maxBatchSize = GPUBufferSize;
-    if ((1.0 * fullEst) * 0.01 < GPUBufferSize) {
-        maxBatchSize = ceil((1.0 * fullEst) * 0.01);
-    }
 
     if (searchMode == SM_HYBRID_STATIC)
     {
@@ -658,9 +654,13 @@ unsigned long long GPUBatchEst_v2(
             cout << "[GPU] ~ Too few batches, reducing GPUBufferSize to " << GPUBufferSize << '\n';
         }
     }
-    if (GPUBufferSize < maxBatchSize) {
-        maxBatchSize = GPUBufferSize;
+    unsigned int maxBatchSize = GPUBufferSize;
+    if ((1.0 * fullEst) * 0.01 < GPUBufferSize) {
+        maxBatchSize = ceil((1.0 * fullEst) * 0.01);
     }
+    // if (GPUBufferSize < maxBatchSize) {
+    //     maxBatchSize = GPUBufferSize;
+    // }
 
     unsigned int batchBegin = 0;
     unsigned int batchEnd = 0;
@@ -1192,18 +1192,17 @@ void distanceTableNDGridBatches(
         {
             unsigned int tid = omp_get_thread_num();
             // std::pair<unsigned int, unsigned int> gpuBatch = std::make_pair(tid * batchSize, tid * batchSize + batchSize);
-            std::pair<unsigned int, unsigned int> gpuBatch = batchesVector[tid];
+            std::pair<unsigned int, unsigned int> gpuBatch = getBatchFromQueue_v2(batchesVector);
 
             unsigned int localBatchCounter = tid;
 
             do
             {
-                nbQueryPoint[tid] += gpuBatch.second - gpuBatch.first;
                 #if !SILENT_GPU
-                    printf("[GPU | T_%d] ~ New batch: begin = %d, end = %d\n", tid, gpuBatch.first, gpuBatch.second);
+                cout << "[GPU "<< tid <<"] New batch: begin = " << gpuBatch.first << ", end = " << gpuBatch.second << '\n' << std::flush;
                 #endif
 
-                errCode = cudaMemcpy( &dev_batchBegin[tid], &gpuBatch.first, sizeof(unsigned int), cudaMemcpyHostToDevice );
+                errCode = cudaMemcpyAsync( &dev_batchBegin[tid], &gpuBatch.first, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid]);
             	if (errCode != cudaSuccess)
                 {
             		cout << "[GPU] ~ Error: queue index copy to device -- error with code " << errCode << '\n';
@@ -1213,6 +1212,9 @@ void distanceTableNDGridBatches(
 
                 // N[tid] = batchSize;
                 N[tid] = gpuBatch.second - gpuBatch.first;
+                #if !SILENT_GPU
+                    cout << "[GPU " << tid << "] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n' << std::flush;
+                #endif
                 errCode = cudaMemcpyAsync( &dev_N[tid], &N[tid], sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
         		if (errCode != cudaSuccess)
                 {
@@ -1220,6 +1222,8 @@ void distanceTableNDGridBatches(
                     cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                     cout.flush();
         		}
+
+                nbQueryPoint[tid] += N[tid];
 
                 // the batched result set size (reset to 0):
         		cnt[tid] = 0;
@@ -1253,8 +1257,7 @@ void distanceTableNDGridBatches(
 
                 const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
                 #if !SILENT_GPU
-                    cout << "[GPU] ~ Total blocks: " << TOTALBLOCKS << '\n';
-                    cout.flush();
+                    cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
                 #endif
 
 
@@ -1276,8 +1279,7 @@ void distanceTableNDGridBatches(
 
                 errCode = cudaGetLastError();
                 #if !SILENT_GPU
-            		cout << "\n\n[GPU] ~ KERNEL LAUNCH RETURN: " << errCode << '\n';
-                    cout.flush();
+                    cout << "\n\n[GPU " << tid << "] ~ KERNEL LAUNCH RETURN: " << errCode << '\n' << std::flush;
                 #endif
         		if ( cudaSuccess != cudaGetLastError() )
                 {
@@ -1294,13 +1296,6 @@ void distanceTableNDGridBatches(
                     cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                     cout.flush();
         		}
-                #if !SILENT_GPU
-        		else{
-                    cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid] << '\n';
-                    cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
-                    cout.flush();
-        		}
-                #endif
 
         		// double endKernel = omp_get_wtime();
 
@@ -1328,7 +1323,11 @@ void distanceTableNDGridBatches(
                 cudaMemcpyAsync(thrust::raw_pointer_cast(pointIDKey[tid]), thrust::raw_pointer_cast(dev_keys_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
         		cudaMemcpyAsync(thrust::raw_pointer_cast(pointInDistValue[tid]), thrust::raw_pointer_cast(dev_data_ptr), cnt[tid] * sizeof(int), cudaMemcpyDeviceToHost, stream[tid]);
 
-                // cudaStreamSynchronize(stream[tid]);
+                cudaStreamSynchronize(stream[tid]);
+                #if !SILENT_GPU
+                cout << "[GPU " << tid << "] ~ Result set size within epsilon: " << cnt[tid] << '\n' << std::flush;
+                cout << "  Details: " << cudaGetErrorString(errCode) << '\n' << std::flush;
+                #endif
 
                 double tableconstuctstart = omp_get_wtime();
         		//set the number of neighbors in the pointer struct:
@@ -1340,16 +1339,14 @@ void distanceTableNDGridBatches(
                 double tableconstuctend = omp_get_wtime();
 
                 #if !SILENT_GPU
-                    cout << "[GPU] ~ Table construct time: " << tableconstuctend - tableconstuctstart << '\n';
-                    cout.flush();
+                    cout << "[GPU " << tid << "] ~ Table construct time: " << tableconstuctend - tableconstuctstart << '\n' << std::flush;
                 #endif
 
                 // add the batched result set size to the total count
         		totalResultsLoop += cnt[tid];
 
                 #if !SILENT_GPU
-                    cout << "[GPU] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n';
-                    cout.flush();
+                    cout << "[GPU " << tid << "] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n' << std::flush;
                 #endif
 
                 // gpuBatch = getBatchFromQueue(*DBSIZE, batchSize);
@@ -1397,14 +1394,13 @@ void distanceTableNDGridBatches(
             double tStartLoop = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << '\n';
-                cout.flush();
+                cout << "[GPU "<< tid <<"] starting iteration " << i << '\n' << std::flush;
             #endif
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
 
-            errCode = cudaMemcpy( &dev_batchBegin[tid], &batchesVector[i].first, sizeof(unsigned int), cudaMemcpyHostToDevice );
+            errCode = cudaMemcpyAsync( &dev_batchBegin[tid], &batchesVector[i].first, sizeof(unsigned int), cudaMemcpyHostToDevice, stream[tid] );
             if (errCode != cudaSuccess)
             {
                 cout << "[GPU] ~ Error: queue index copy to device -- error with code " << errCode << '\n';
@@ -1414,8 +1410,7 @@ void distanceTableNDGridBatches(
 
             N[tid] = batchesVector[i].second - batchesVector[i].first;
             #if !SILENT_GPU
-                cout << "[GPU] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n';
-                cout.flush();
+                cout << "[GPU " << tid << "] ~ N (1 less): " << N[tid] << ", tid " << tid << '\n' << std::flush;
             #endif
 
             nbQueryPoint[tid] += N[tid];
@@ -1464,8 +1459,7 @@ void distanceTableNDGridBatches(
 
     		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
             #if !SILENT_GPU
-                cout << "[GPU] ~ Total blocks: " << TOTALBLOCKS << '\n';
-                cout.flush();
+                cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
             #endif
 
 
@@ -1488,8 +1482,7 @@ void distanceTableNDGridBatches(
 
             errCode = cudaGetLastError();
             #if !SILENT_GPU
-        		cout << "\n\n[GPU] ~ KERNEL LAUNCH RETURN: " << errCode << '\n';
-                cout.flush();
+        		cout << "\n\n[GPU " << tid << "] ~ KERNEL LAUNCH RETURN: " << errCode << '\n' << std::flush;
             #endif
     		if ( cudaSuccess != cudaGetLastError() )
             {
@@ -1506,13 +1499,6 @@ void distanceTableNDGridBatches(
                 cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
                 cout.flush();
     		}
-            #if !SILENT_GPU
-    		else {
-                cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid] << '\n';
-                cout << "  Details: " << cudaGetErrorString(errCode) << '\n';
-                cout.flush();
-    		}
-            #endif
 
     		// double endKernel = omp_get_wtime();
             // kernelTime[tid] += endKernel - beginKernel;
@@ -1568,6 +1554,10 @@ void distanceTableNDGridBatches(
 
     		//need to make sure the data is copied before constructing portion of the neighbor table
     		cudaStreamSynchronize(stream[tid]);
+            #if !SILENT_GPU
+            cout << "[GPU] ~ Result set size within epsilon: " << cnt[tid] << '\n' << std::flush;
+            cout << "  Details: " << cudaGetErrorString(errCode) << '\n' << std::flush;
+            #endif
 
             // cout << "[GPU] ~ Stream synchronization\n";
             // cout.flush();
@@ -1584,16 +1574,14 @@ void distanceTableNDGridBatches(
     		double tableconstuctend = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ Table construct time: " << tableconstuctend - tableconstuctstart << '\n';
-                cout.flush();
+                cout << "[GPU " << tid << "] ~ Table construct time: " << tableconstuctend - tableconstuctstart << '\n' << std::flush;
             #endif
 
     		//add the batched result set size to the total count
     		totalResultsLoop += cnt[tid];
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n';
-                cout.flush();
+                cout << "[GPU " << tid << "] ~ Running total of total size of result array, tid: " << tid << ", " << totalResultsLoop << '\n' << std::flush;
             #endif
 
             double tEndLoop = omp_get_wtime();
