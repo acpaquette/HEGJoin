@@ -403,13 +403,13 @@ int main(int argc, char * argv[])
     fprintf(stdout, "   [RESULT] ~ Total execution time for the GPU: %f\n", gpuTime);
     fprintf(stdout, "   [RESULT] ~ Total execution time for the CPU: %f (reorder: %f, sort: %f, total = %f)\n", egoTime, egoReorder, egoSort, egoTime + egoReorder + egoSort);
 
-    if(tEndGPU < tEndEgo)
+    if(gpuTime < totalEgoTime)
     {
-        double timeDiff = tEndEgo - tEndGPU;
-        fprintf(stdout, "[RESULT] ~ The GPU ended before the CPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
+        double timeDiff = totalEgoTime - gpuTime;
+        fprintf(stdout, "[RESULT] ~ The GPU ended before the CPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / totalEgoTime);
     }else{
-        double timeDiff = tEndGPU - tEndEgo;
-        fprintf(stdout, "[RESULT] ~ The CPU ended before the GPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / (computeTime + sortTime));
+        double timeDiff = gpuTime - totalEgoTime;
+        fprintf(stdout, "[RESULT] ~ The CPU ended before the GPU, with a difference of: %f (ratio: %f)\n", timeDiff, timeDiff / gpuTime);
     }
 
     // printNeighborTable(neighborTable, 0, 20);
