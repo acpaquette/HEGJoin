@@ -3,3 +3,9 @@ main
 *.pdf
 *.sh
 
+datasets/*
+analysis_scripts/fixed_len_pts_expo_NDIM_*_10M
+analysis_scripts/fixed_len_pts_expo_NDIM_*_2M
+
+egr33_test_results
+egr75_test_results
