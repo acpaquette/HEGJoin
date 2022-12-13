@@ -401,7 +401,8 @@ int main(int argc, char * argv[])
     fprintf(stdout, "[RESULT] ~ Total execution time: %f\n", computeTime + sortTime);
     fprintf(stdout, "   [RESULT] ~ Total execution time to SortByWL: %f\n", sortTime);
     fprintf(stdout, "   [RESULT] ~ Total execution time for the GPU: %f\n", gpuTime);
-    fprintf(stdout, "   [RESULT] ~ Total execution time for the CPU: %f (reorder: %f, sort: %f, total = %f)\n", egoTime, egoReorder, egoSort, egoTime + egoReorder + egoSort);
+    double totalEgoTime = egoTime + egoReorder + egoSort;
+    fprintf(stdout, "   [RESULT] ~ Total execution time for the CPU: %f (reorder: %f, sort: %f, total = %f)\n", totalEgoTime, egoReorder, egoSort, egoTime);
 
     if(gpuTime < totalEgoTime)
     {
