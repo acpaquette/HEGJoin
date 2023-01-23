@@ -1218,15 +1218,15 @@ void distanceTableNDGridBatches(
                 // double beginKernel = omp_get_wtime();
                 cudaEventRecord(startKernel[tid], stream[tid]);
                 #if SORT_BY_WORKLOAD
-                    kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                    kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
                 #else
-                    kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                    kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
                 #endif
                 cudaEventRecord(stopKernel[tid], stream[tid]);
 
@@ -1398,7 +1398,7 @@ void distanceTableNDGridBatches(
                 cout.flush();
     		}
 
-    		// const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
+    		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
             #if !SILENT_GPU
                 cout << "[GPU " << tid << "] ~ Total blocks: " << NBLOCKS << '\n' << std::flush;
             #endif
@@ -1411,15 +1411,15 @@ void distanceTableNDGridBatches(
     		//0 is shared memory pool
             cudaEventRecord(startKernel[tid], stream[tid]);
             #if SORT_BY_WORKLOAD
-                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid]);
             #else
-                kernelNDGridIndexGlobal<<< NBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
+                kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                     dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid]);
             #endif
             cudaEventRecord(stopKernel[tid], stream[tid]);
 
