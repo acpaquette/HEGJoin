@@ -90,7 +90,7 @@ __device__ void evaluateCell(
 		int* pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		unsigned int* nDCellIDs);
+		const unsigned int tpp);
 
 
 __forceinline__ __device__ void evalPointUnicompOrigin(
@@ -252,8 +252,6 @@ __global__ void kernelNDGridIndexBatchEstimator_v2(
 __global__ void kernelNDGridIndexGlobal(
 		unsigned int * batchBegin,
 		unsigned int * N,
-		unsigned int * offset,
-		unsigned int * batchNum,
 		DTYPE * database,
 		DTYPE * sortedCells,
 		unsigned int * originPointIndex,
@@ -268,7 +266,8 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMask,
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
-		int * pointInDistVal);
+		int * pointInDistVal,
+		const unsigned int tpp);
 
 
 __global__ void kernelNDGridIndexGlobalUnicomp(

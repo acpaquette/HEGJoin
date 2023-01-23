@@ -19,10 +19,10 @@ using namespace cooperative_groups;
 
 __device__ void print(unsigned int tid, unsigned int value)
 {
-	if(0 == tid)
-	{
-		printf("threadIdx.x 0, value = %d\n", value);
-	}
+		if(0 == tid)
+		{
+				printf("threadIdx.x 0, value = %d\n", value);
+		}
 }
 
 
@@ -41,28 +41,28 @@ __global__ void kernelIndexComputeNonemptyCells(
 	unsigned int * databaseVal,
 	bool enumerate)
 {
-	unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
+		unsigned int tid = blockIdx.x * BLOCKSIZE + threadIdx.x;
 
-	if(*N <= tid)
-	{
-		return;
-	}
+		if(*N <= tid)
+		{
+				return;
+		}
 
-	unsigned int pointID = tid * GPUNUMDIM;
+		unsigned int pointID = tid * GPUNUMDIM;
 
-	unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
-	for (int j = 0; j < NUMINDEXEDDIM; j++)
-	{
-		tmpNDCellIdx[j] = ((database[pointID + j] - minArr[j]) / (*epsilon));
-	}
-	uint64_t linearID = getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
+		unsigned int tmpNDCellIdx[NUMINDEXEDDIM];
+		for (int j = 0; j < NUMINDEXEDDIM; j++)
+		{
+				tmpNDCellIdx[j] = ((database[pointID + j] - minArr[j]) / (*epsilon));
+		}
+		uint64_t linearID = getLinearID_nDimensionsGPU(tmpNDCellIdx, nCells, NUMINDEXEDDIM);
 
-	pointCellArr[tid] = linearID;
+		pointCellArr[tid] = linearID;
 
-	if(enumerate)
-	{
-		databaseVal[tid] = tid;
-	}
+		if(enumerate)
+		{
+				databaseVal[tid] = tid;
+		}
 }
 
 
@@ -85,62 +85,61 @@ __global__ void sortByWorkLoadGlobal(
 		schedulingCell * sortedCells)
 {
 
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if(*nNonEmptyCells <= tid)
-	{
-		return;
-	}
+		if(*nNonEmptyCells <= tid)
+		{
+				return;
+		}
 
-	unsigned int cell = gridCellLookupArr[tid].idx;
-	unsigned int nbNeighborPoints = 0;
-	unsigned int tmpId = indexLookupArr[ index[cell].indexmin ];
+		unsigned int cell = gridCellLookupArr[tid].idx;
+		unsigned int nbNeighborPoints = 0;
+		unsigned int tmpId = indexLookupArr[ index[cell].indexmin ];
 
-	DTYPE point[GPUNUMDIM];
-	for(int i = 0; i < GPUNUMDIM; ++i)
-	{
-		point[i] = database[tmpId * GPUNUMDIM + i];
-	}
+		DTYPE point[GPUNUMDIM];
+		for(int i = 0; i < GPUNUMDIM; ++i)
+		{
+				point[i] = database[tmpId * GPUNUMDIM + i];
+		}
 
-	unsigned int nDCellIDs[NUMINDEXEDDIM];
+		unsigned int nDCellIDs[NUMINDEXEDDIM];
 
-	unsigned int nDMinCellIDs[NUMINDEXEDDIM];
-	unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
+		unsigned int nDMinCellIDs[NUMINDEXEDDIM];
+		unsigned int nDMaxCellIDs[NUMINDEXEDDIM];
 
-	for(int n = 0; n < NUMINDEXEDDIM; n++)
-	{
-		nDCellIDs[n] = (point[n] - minArr[n]) / (*epsilon);
-		nDMinCellIDs[n] = max(0, nDCellIDs[n] - 1);;
-		nDMaxCellIDs[n] = min(nCells[n] - 1, nDCellIDs[n] + 1);
-	}
+		for(int n = 0; n < NUMINDEXEDDIM; n++)
+		{
+				nDCellIDs[n] = (point[n] - minArr[n]) / (*epsilon);
+				nDMinCellIDs[n] = max(0, nDCellIDs[n] - 1);;
+				nDMaxCellIDs[n] = min(nCells[n] - 1, nDCellIDs[n] + 1);
+		}
 
-	unsigned int indexes[NUMINDEXEDDIM];
-	unsigned int loopRng[NUMINDEXEDDIM];
+		unsigned int indexes[NUMINDEXEDDIM];
+		unsigned int loopRng[NUMINDEXEDDIM];
 
-	// for (loopRng[0] = rangeFilteredCellIdsMin[0]; loopRng[0] <= rangeFilteredCellIdsMax[0]; loopRng[0]++)
-	// 	for (loopRng[1] = rangeFilteredCellIdsMin[1]; loopRng[1] <= rangeFilteredCellIdsMax[1]; loopRng[1]++)
-	for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
+		// for (loopRng[0] = rangeFilteredCellIdsMin[0]; loopRng[0] <= rangeFilteredCellIdsMax[0]; loopRng[0]++)
+		// 	for (loopRng[1] = rangeFilteredCellIdsMin[1]; loopRng[1] <= rangeFilteredCellIdsMax[1]; loopRng[1]++)
+		for (loopRng[0] = nDMinCellIDs[0]; loopRng[0] <= nDMaxCellIDs[0]; loopRng[0]++)
 		for (loopRng[1] = nDMinCellIDs[1]; loopRng[1] <= nDMaxCellIDs[1]; loopRng[1]++)
 		#include "kernelloops.h"
 		{
-			for (int x = 0; x < NUMINDEXEDDIM; x++){
-				indexes[x] = loopRng[x];
-			}
+				for (int x = 0; x < NUMINDEXEDDIM; x++){
+						indexes[x] = loopRng[x];
+				}
 
-			uint64_t cellID = getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
-			struct gridCellLookup tmp;
-			tmp.gridLinearID = cellID;
-			if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
-			{
-				struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
-				unsigned int GridIndex = resultBinSearch->idx;
-				nbNeighborPoints += index[GridIndex].indexmax - index[GridIndex].indexmin + 1;
-			}
+				uint64_t cellID = getLinearID_nDimensionsGPU(indexes, nCells, NUMINDEXEDDIM);
+				struct gridCellLookup tmp;
+				tmp.gridLinearID = cellID;
+				if (thrust::binary_search(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp)))
+				{
+						struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
+						unsigned int GridIndex = resultBinSearch->idx;
+						nbNeighborPoints += index[GridIndex].indexmax - index[GridIndex].indexmin + 1;
+				}
 		}
 
-	sortedCells[tid].nbPoints = nbNeighborPoints;
-	sortedCells[tid].cellId = cell;
-
+		sortedCells[tid].nbPoints = nbNeighborPoints;
+		sortedCells[tid].cellId = cell;
 }
 
 
@@ -347,6 +346,12 @@ __forceinline__ __device__ void evalPoint(
 	DTYPE runningTotalDist = 0;
 	unsigned int dataIdx = indexLookupArr[k];
 
+	// if (threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("BLOCK %d COMPARING %d to %d\n", blockIdx.x, pointIdx, dataIdx);
+	// 	#endif
+	// }
+
 	for(int l = 0; l < GPUNUMDIM; l++){
 		runningTotalDist += ( database[dataIdx * GPUNUMDIM + l] - point[l])
 				* (database[dataIdx * GPUNUMDIM + l] - point[l] );
@@ -390,7 +395,7 @@ __device__ void evaluateCell(
 		int * pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		unsigned int * nDCellIDs)
+		const unsigned int tpp)
 {
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
@@ -405,8 +410,17 @@ __device__ void evaluateCell(
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
 
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; ++k){
-			evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+		// 3207 - 3208 / 2
+		// 1604
+		// unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
+		// if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+		// 	printf("THREAD %d OF BLOCK %d (id: %d), examining points: %d, %d\n", threadIdx.x, blockIdx.x, tid, pointIdx, index[GridIndex].indexmin + (threadIdx.x % tpp));
+		// }
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=tpp) {
+			uint64_t pointToCompare = (k + (threadIdx.x % tpp));
+			if (pointToCompare <= index[GridIndex].indexmax) {
+				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+			}
 		}
 	}
 }
@@ -727,8 +741,6 @@ __global__ void kernelNDGridIndexBatchEstimator_v2(
 __global__ void kernelNDGridIndexGlobal(
 		unsigned int * batchBegin,
 		unsigned int * N,
-		unsigned int * offset,
-		unsigned int * batchNum,
 		DTYPE * database,
 		DTYPE * sortedCells,
 		unsigned int * originPointIndex,
@@ -743,18 +755,32 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMask,
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
-		int * pointInDistVal)
+		int * pointInDistVal,
+		const unsigned int tpp)
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
+	double test = tid / BLOCKSIZE;
 
-	if (*N <= tid)
+	// if (blockIdx.x == 519 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+	// 	printf("THREAD %d OF BLOCK %d, stopped executing: %d\n", threadIdx.x, blockIdx.x, floor(test) >= *N);
+	// 	printf("THREAD %d OF BLOCK %d, size N: %f, %d\n", threadIdx.x, blockIdx.x, floor(test), *N);
+	// }
+	if (floor(test) >= *N)
 	{
 		return;
 	}
 
-	unsigned int pointId = atomicAdd(batchBegin, int(1));
-
+	// uint64_t originPoint = (uint64_t)tid/tpp;
+	unsigned int pointId = (unsigned int)((*batchBegin) + (tid/tpp));
+	// if (blockIdx.x == 0 && (threadIdx.x == 0 || threadIdx.x == 32)) {
+	// 	printf("THREAD %d OF BLOCK %d, max tid: %d\n", threadIdx.x, blockIdx.x, N[(threadIdx.x / tpp)]);
+	// }
+	// if (threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("BLOCK %d COMPUTING %d\n", blockIdx.x, pointId);
+	// 	#endif
+	// }
 	//make a local copy of the point
 	DTYPE point[GPUNUMDIM];
 	for (int i = 0; i < GPUNUMDIM; i++)
@@ -765,6 +791,12 @@ __global__ void kernelNDGridIndexGlobal(
 			point[i] = database[ pointId * GPUNUMDIM + i ];
 		#endif
 	}
+
+	// if (blockIdx.x == 0 && threadIdx.x == 0) {
+	// 	# if __CUDA_ARCH__>=200
+	// 	printf("Examining Point: %d(%d)\n", pointId, originPointIndex[pointId]);
+	// 	#endif
+	// }
 
 	//calculate the coords of the Cell for the point
 	//and the min/max ranges in each dimension
@@ -795,7 +827,7 @@ __global__ void kernelNDGridIndexGlobal(
 			}
 
 			evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index,
-					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, nDCellIDs);
+					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, tpp);
 
 		} //end loop body
 

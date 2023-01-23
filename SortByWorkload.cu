@@ -157,7 +157,7 @@ void sortByWorkLoad(
         int cellId = (*sortedDatabaseTmp)[i].cellId;
         int nbNeighbor = index[cellId].indexmax - index[cellId].indexmin + 1;
 
-        accNeighbor += (nbNeighbor * (*sortedDatabaseTmp)[i].nbPoints);
+        accNeighbor += ((uint64_t)nbNeighbor * (uint64_t)(*sortedDatabaseTmp)[i].nbPoints);
 
         for (int j = 0; j < nbNeighbor; ++j)
         {

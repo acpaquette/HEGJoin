@@ -171,18 +171,18 @@ int main(int argc, char * argv[])
             //
             ////////////////////////////////////////////////////////////////////////////////////////
 
-                // double gpuTimeModel = getGPUTimeCandidates(DBSIZE, epsilon, totalCandidates);
-                // double cpuTimeModel = getCPUTimeCandidates(DBSIZE, epsilon, totalCandidates);
-                //
-                // uint64_t gpu_cps = totalCandidates / gpuTimeModel;
-                // uint64_t cpu_cps = totalCandidates / cpuTimeModel;
-                // uint64_t upper_cps = gpu_cps + cpu_cps;
-                //
-                // staticPartition = gpu_cps / upper_cps;
-                //
-                // fprintf(stdout, "[MODEL] ~ GPU time: %f, CPU time: %f\n", gpuTimeModel, cpuTimeModel);
-                // fprintf(stdout, "[MODEL] ~ GPU queries/s: %lu, CPU queries/s: %lu, upper queries/s: %lu\n", gpu_cps, cpu_cps, upper_cps);
-                // fprintf(stdout, "[MODEL] ~ Modeled GPU partition: %f, CPU partition: %f\n", staticPartition, 1 - staticPartition);
+            // double gpuTimeModel = getGPUTimeCandidates(DBSIZE, epsilon, totalCandidates);
+            // double cpuTimeModel = getCPUTimeCandidates(DBSIZE, epsilon, totalCandidates);
+            //
+            // uint64_t gpu_cps = totalCandidates / gpuTimeModel;
+            // uint64_t cpu_cps = totalCandidates / cpuTimeModel;
+            // uint64_t upper_cps = gpu_cps + cpu_cps;
+            //
+            // staticPartition = gpu_cps / upper_cps;
+            //
+            // fprintf(stdout, "[MODEL] ~ GPU time: %f, CPU time: %f\n", gpuTimeModel, cpuTimeModel);
+            // fprintf(stdout, "[MODEL] ~ GPU queries/s: %lu, CPU queries/s: %lu, upper queries/s: %lu\n", gpu_cps, cpu_cps, upper_cps);
+            // fprintf(stdout, "[MODEL] ~ Modeled GPU partition: %f, CPU partition: %f\n", staticPartition, 1 - staticPartition);
             // #endif
         }
     } else { // Dynamic partitioning or CPU/GPU alone
@@ -532,8 +532,8 @@ void printNeighborTable(
 	 	std::sort(neighborTable[i].dataPtr + neighborTable[i].indexmin, neighborTable[i].dataPtr + neighborTable[i].indexmax + 1);
 	 	printf("point id: %d, neighbors: %d\n", i, neighborTable[i].indexmax - neighborTable[i].indexmin);
 	 	for (int j = neighborTable[i].indexmin; j < neighborTable[i].indexmax - 1; j++)
-        {
-	 		printf("%d, ", neighborTable[i].dataPtr[j]);
+    {
+	 		  printf("%d, ", neighborTable[i].dataPtr[j]);
 	 	}
         printf("%d\n", neighborTable[i].dataPtr[ neighborTable[i].indexmax - 1 ]);
     }
@@ -655,7 +655,6 @@ void populateNDGridIndexAndLookupArray(
 
 
     //populate temp index and lookup array
-
     for (int i = 0; i < uniqueGridCellLinearIdsVect.size(); i++)
     {
         tmpIndex[i].indexmin = cnt;
@@ -680,14 +679,12 @@ void populateNDGridIndexAndLookupArray(
 
     *nNonEmptyCells = uniqueGridCellLinearIdsVect.size();
 
-
     printf("\nSize of index that would be sent to GPU (GiB) -- (if full index sent), excluding the data lookup arr: %f", (double)sizeof(struct grid) * (totalCells) / (1024.0 * 1024.0 * 1024.0));
     printf("\nSize of compressed index to be sent to GPU (GiB) , excluding the data and grid lookup arr: %f", (double)sizeof(struct grid) * (uniqueGridCellLinearIdsVect.size() * 1.0) / (1024.0 * 1024.0 * 1024.0));
 
 
     /////////////////////////////////////////
     //copy the tmp index into the actual index that only has the non-empty cells
-
     //allocate memory for the index that will be sent to the GPU
     *index = new grid[uniqueGridCellLinearIdsVect.size()];
     *gridCellLookupArr = new struct gridCellLookup[uniqueGridCellLinearIdsVect.size()];
@@ -707,7 +704,6 @@ void populateNDGridIndexAndLookupArray(
     //copy NDArrMask from set to an array
 
     //find the total size and allocate the array
-
     unsigned int cntNDOffsets = 0;
     unsigned int cntNonEmptyNDMask = 0;
     for (int i = 0; i < NUMINDEXEDDIM; i++)

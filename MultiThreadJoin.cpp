@@ -17,6 +17,7 @@
 #include "WorkQueue.h"
 #include "structs.h"
 
+#include </usr/local/cuda-11.4/include/nvToolsExt.h>
 using namespace std;
 
 uint64_t Util::multiThreadJoinWorkQueue(
@@ -103,7 +104,8 @@ uint64_t Util::multiThreadJoinWorkQueue(
 				delete resultVector;
 
 				cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
-			}while (0 != cpuBatch.second);
+			}
+			while (0 != cpuBatch.second);
 
 			// results[tid] += resultVector.size() / 2;
 
@@ -129,8 +131,10 @@ uint64_t Util::multiThreadJoinWorkQueue(
 				do
 				{
 					cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
-				}while (cpuBatch.second < cpuBatch.first);
-			} else {
+				}
+				while (cpuBatch.second < cpuBatch.first);
+			}
+			else {
 				cpuBatch = getBatchFromQueue(A_sz, CPU_BATCH_SIZE);
 			}
 

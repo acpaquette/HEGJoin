@@ -354,8 +354,8 @@ void Util::egoJoinV2(pPoint A, int frA, int toA, pPoint B, int frB, int toB, int
 
 	if (A_sz >= MINLEN && B_sz >= MINLEN)
 	{
-        // printf("\nCase 2 (self-thread)\n");
-        egoJoinV2(A, frA             , frA + A_sz / 2, B, frB             , frB + B_sz/2, start_dim, nbCandidate, result, nbCandidatesArray); // f f
+    // printf("\nCase 2 (self-thread)\n");
+    egoJoinV2(A, frA             , frA + A_sz / 2, B, frB             , frB + B_sz/2, start_dim, nbCandidate, result, nbCandidatesArray); // f f
 		egoJoinV2(A, frA             , frA + A_sz / 2, B, frB + B_sz/2 + 1, toB         , start_dim, nbCandidate, result, nbCandidatesArray); // f s
 		egoJoinV2(A, frA + A_sz/2 + 1, toA           , B, frB             , frB + B_sz/2, start_dim, nbCandidate, result, nbCandidatesArray); // s f
 		egoJoinV2(A, frA + A_sz/2 + 1, toA           , B, frB + B_sz/2 + 1, toB         , start_dim, nbCandidate, result, nbCandidatesArray); // f s
@@ -369,8 +369,8 @@ void Util::egoJoinV2(pPoint A, int frA, int toA, pPoint B, int frB, int toB, int
 	//-- case 3--
 	if (A_sz >= MINLEN && B_sz < MINLEN)
 	{
-        // printf("\nCase 3 (self-thread)\n");
-        egoJoinV2(A, frA             , frA + A_sz / 2, B, frB, toB, start_dim, nbCandidate, result, nbCandidatesArray); // f full
+    // printf("\nCase 3 (self-thread)\n");
+    egoJoinV2(A, frA             , frA + A_sz / 2, B, frB, toB, start_dim, nbCandidate, result, nbCandidatesArray); // f full
 		egoJoinV2(A, frA + A_sz/2 + 1, toA           , B, frB, toB, start_dim, nbCandidate, result, nbCandidatesArray); // s full
 		// egoJoinV2(A, frA             , frA + A_sz / 2, B, frB, toB, start_dim, result, nbNeighbors); // f full
 		// egoJoinV2(A, frA + A_sz/2 + 1, toA           , B, frB, toB, start_dim, result, nbNeighbors); // s full
@@ -380,8 +380,8 @@ void Util::egoJoinV2(pPoint A, int frA, int toA, pPoint B, int frB, int toB, int
 	//-- case 4 --
 	if (A_sz < MINLEN && B_sz >= MINLEN)
 	{
-        // printf("\nCase 4 (self-thread)\n");
-        egoJoinV2(A, frA, toA, B, frB             , frB + B_sz/2, start_dim, nbCandidate, result, nbCandidatesArray); // f f
+    // printf("\nCase 4 (self-thread)\n");
+    egoJoinV2(A, frA, toA, B, frB             , frB + B_sz/2, start_dim, nbCandidate, result, nbCandidatesArray); // f f
 		egoJoinV2(A, frA, toA, B, frB + B_sz/2 + 1, toB         , start_dim, nbCandidate, result, nbCandidatesArray); // f s
 		// egoJoinV2(A, frA, toA, B, frB             , frB + B_sz/2, start_dim, result, nbNeighbors); // f f
 		// egoJoinV2(A, frA, toA, B, frB + B_sz/2 + 1, toB         , start_dim, result, nbNeighbors); // f s
