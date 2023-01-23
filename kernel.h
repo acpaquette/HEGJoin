@@ -252,8 +252,6 @@ __global__ void kernelNDGridIndexBatchEstimator_v2(
 __global__ void kernelNDGridIndexGlobal(
 		unsigned int * batchBegin,
 		unsigned int * N,
-		unsigned int * offset,
-		unsigned int * batchNum,
 		DTYPE * database,
 		DTYPE * sortedCells,
 		unsigned int * originPointIndex,

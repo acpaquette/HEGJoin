@@ -135,8 +135,10 @@ uint64_t Util::multiThreadJoinWorkQueue(
 				do
 				{
 					cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
-				}while (cpuBatch.second < cpuBatch.first);
-			} else {
+				}
+				while (cpuBatch.second < cpuBatch.first);
+			} 
+			else {
 				cpuBatch = getBatchFromQueue(A_sz, CPU_BATCH_SIZE);
 			}
 

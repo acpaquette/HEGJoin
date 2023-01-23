@@ -38,18 +38,19 @@ std::pair<unsigned int, unsigned int> getBatchFromQueue(
     {
         #pragma omp critical
         {
-            if(queueIndex < DBSIZE && queueIndex < queueIndexCPU && queueIndex != queueIndexCPU)
-            {
+            if(queueIndex < DBSIZE && queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
                 begin = queueIndex;
                 end = min(begin + batchSize, queueIndexCPU);
                 queueIndex = end;
-            }else{
+            } 
+            else {
                 begin = 0;
                 end = 0;
                 queueIndex = DBSIZE;
             }
         }
-    }else{
+    } 
+    else {
         begin = 1;
         end = 0;
     }
@@ -66,18 +67,19 @@ std::pair<unsigned int, unsigned int> getBatchFromQueue_v2(
         #pragma omp critical
         {
 
-            if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU)
-            {
+            if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
                 begin = batches[gpuBatch].first;
                 end = min(batches[gpuBatch].second, queueIndexCPU);
                 queueIndex = end;
                 gpuBatch++;
-            }else{
+            }
+            else {
                 begin = 0;
                 end = 0;
             }
         }
-    }else{
+    }
+    else {
         begin = 1;
         end = 0;
     }
@@ -93,17 +95,18 @@ std::pair<unsigned int, unsigned int> getBatchFromQueueCPU(
     {
         #pragma omp critical
         {
-            if(0 < queueIndexCPU && queueIndex < queueIndexCPU && queueIndex != queueIndexCPU)
-            {
+            if(0 < queueIndexCPU && queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
                 begin = max(queueIndex, queueIndexCPU - batchSize);
                 end = queueIndexCPU;
                 queueIndexCPU = begin;
-            }else{
+            }
+            else {
                 begin = 0;
                 end = 0;
             }
         }
-    }else{
+    }
+    else {
         begin = 1;
         end = 0;
     }
