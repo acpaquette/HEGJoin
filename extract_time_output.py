@@ -30,7 +30,8 @@ def get_times(file_folder, file_prefix):
                 gpu_time = gpu_time_line.split(" ")[-1].rstrip()
                 cpu_time_line = data[-2]
                 cpu_time = cpu_time_line.split(":")[1].split(" ")[1].rstrip()
-                time_sets.append((dimension, epsilon, cpu_num, total_time, gpu_time, cpu_time))
+                ratio = data[-1].split(":")[-1].replace(")", "").replace(" ", "").rstrip()
+                time_sets.append((dimension, epsilon, cpu_num, total_time, gpu_time, cpu_time, ratio))
             except Exception as e:
                 print("Failed on {}".format(cpu_num))
     return time_sets
@@ -38,7 +39,7 @@ def get_times(file_folder, file_prefix):
 def main(args):
     time_sets = get_times(args.file_folder, args.file_prefix)
     for time_set in time_sets:
-        print(f"{time_set[0]}, {time_set[1]}, {time_set[2]}, {time_set[3]}, {time_set[4]}, {time_set[5]}")
+        print(f"{time_set[0]}, {time_set[1]}, {time_set[2]}, {time_set[3]}, {time_set[4]}, {time_set[5]}, {time_set[6]}")
 
 
 if __name__ == '__main__':

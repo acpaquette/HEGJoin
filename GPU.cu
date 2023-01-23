@@ -654,19 +654,16 @@ unsigned long long GPUBatchEst_v2(
             cout << "[GPU] ~ Too few batches, reducing GPUBufferSize to " << GPUBufferSize << '\n';
         }
     }
-    unsigned int maxBatchSize = GPUBufferSize;
+    // unsigned int maxBatchSize = GPUBufferSize;
     if ((1.0 * fullEst) * 0.01 < GPUBufferSize) {
-        maxBatchSize = ceil((1.0 * fullEst) * 0.01);
+        GPUBufferSize = ceil((1.0 * fullEst) * 0.01);
     }
-    // if (GPUBufferSize < maxBatchSize) {
-    //     maxBatchSize = GPUBufferSize;
-    // }
 
     unsigned int batchBegin = 0;
     unsigned int batchEnd = 0;
     unsigned long long runningEst = 0;
     // Keeping 5% of margin to avoid a potential overflow of the buffer
-    unsigned int reserveBuffer = maxBatchSize * 0.05;
+    unsigned int reserveBuffer = GPUBufferSize * 0.05;
 
     if (searchMode == SM_HYBRID_STATIC)
     {
@@ -675,7 +672,7 @@ unsigned long long GPUBatchEst_v2(
             {
                 runningEst += estimatedFull[i];
                 // fullEst += estimatedFull[i];
-                if ((maxBatchSize - reserveBuffer) <= runningEst)
+                if ((GPUBufferSize - reserveBuffer) <= runningEst)
                 {
                     batchEnd = i;
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
@@ -717,7 +714,7 @@ unsigned long long GPUBatchEst_v2(
             {
                 runningEst += estimatedFull[i];
                 // fullEst += estimatedFull[i];
-                if ((maxBatchSize - reserveBuffer) <= runningEst)
+                if ((GPUBufferSize - reserveBuffer) <= runningEst)
                 {
                     batchEnd = i;
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
@@ -743,7 +740,7 @@ unsigned long long GPUBatchEst_v2(
         {
             runningEst += estimatedFull[i];
             // fullEst += estimatedFull[i];
-            if ((maxBatchSize - reserveBuffer) <= runningEst)
+            if ((GPUBufferSize - reserveBuffer) <= runningEst)
             {
                 batchEnd = i;
                 batches->push_back(std::make_pair(batchBegin, batchEnd));
