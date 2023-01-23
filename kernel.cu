@@ -389,7 +389,7 @@ __device__ void evaluateCell(
 		int * pointInDistVal,
 		int pointIdx,
 		bool differentCell,
-		unsigned int * nDCellIDs)
+		const unsigned int tpp)
 {
 	//compare the linear ID with the gridCellLookupArr to determine if the cell is non-empty: this can happen because one point says
 	//a cell in a particular dimension is non-empty, but that's because it was related to a different point (not adjacent to the query point)
@@ -404,8 +404,11 @@ __device__ void evaluateCell(
 		struct gridCellLookup * resultBinSearch = thrust::lower_bound(thrust::seq, gridCellLookupArr, gridCellLookupArr + (*nNonEmptyCells), gridCellLookup(tmp));
 		unsigned int GridIndex = resultBinSearch->idx;
 
-		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; ++k){
-			evalPoint(indexLookupArr, k, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+		for(int k = index[GridIndex].indexmin; k <= index[GridIndex].indexmax; k+=tpp) {
+			uint64_t pointToCompare = (k + (threadIdx.x % tpp));
+			if (pointToCompare <= index[GridIndex].indexmax) {
+				evalPoint(indexLookupArr, pointToCompare, database, epsilon, point, cnt, pointIDKey, pointInDistVal, pointIdx, differentCell);
+			}
 		}
 	}
 }
@@ -740,17 +743,18 @@ __global__ void kernelNDGridIndexGlobal(
 		// unsigned int * gridCellNDMask,
 		// unsigned int * gridCellNDMaskOffsets,
 		int * pointIDKey,
-		int * pointInDistVal)
+		int * pointInDistVal,
+		const unsigned int tpp)
 {
 
 	unsigned int tid = (blockIdx.x * BLOCKSIZE + threadIdx.x);
 
-	if (*N <= tid)
+	if (tid >= (*N) * tpp)
 	{
 		return;
 	}
 
-	unsigned int pointId = atomicAdd(batchBegin, int(1));
+	unsigned int pointId = (unsigned int)((*batchBegin) + (tid / tpp));
 
 	//make a local copy of the point
 	DTYPE point[GPUNUMDIM];
@@ -792,7 +796,7 @@ __global__ void kernelNDGridIndexGlobal(
 			}
 
 			evaluateCell(nCells, indexes, gridCellLookupArr, nNonEmptyCells, database, epsilon, index,
-					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, nDCellIDs);
+					indexLookupArr, point, cnt, pointIDKey, pointInDistVal, originPointIndex[pointId], false, tpp);
 
 		} //end loop body
 

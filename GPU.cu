@@ -980,7 +980,7 @@ void distanceTableNDGridBatches(
 	//ALLOCATE POINTERS TO INTEGER ARRAYS FOR THE VALUES FOR THE NEIGHBORTABLES
 	///////////////////
 
-	//THE NUMBER OF POINTERS IS EQUAL TO THE NUMBER OF BATCHES
+    //THE NUMBER OF POINTERS IS EQUAL TO THE NUMBER OF BATCHES
 	for (int i = 0; i < numBatches; i++)
     {
 		int *ptr;
@@ -1207,7 +1207,7 @@ void distanceTableNDGridBatches(
                     cout.flush();
         		}
 
-                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
+                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * TPP;
                 #if !SILENT_GPU
                     cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
                 #endif
@@ -1221,12 +1221,12 @@ void distanceTableNDGridBatches(
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
                 #else
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
                 #endif
                 cudaEventRecord(stopKernel[tid], stream[tid]);
 
@@ -1355,7 +1355,7 @@ void distanceTableNDGridBatches(
             double tStartLoop = omp_get_wtime();
 
             #if !SILENT_GPU
-                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << " with block: " << (i * NBLOCKS) << '\n' << std::flush;
+                cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << '\n' << std::flush;
             #endif
 
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
@@ -1398,9 +1398,9 @@ void distanceTableNDGridBatches(
                 cout.flush();
     		}
 
-    		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) );
+    		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * TPP;
             #if !SILENT_GPU
-                cout << "[GPU " << tid << "] ~ Total blocks: " << NBLOCKS << '\n' << std::flush;
+                cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
             #endif
 
             #if GPU_LOCKING
@@ -1414,12 +1414,12 @@ void distanceTableNDGridBatches(
                 kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                     dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
             #else
                 kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                     dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                     dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                    dev_pointIDKey[tid], dev_pointInDistValue[tid]);
+                    dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
             #endif
             cudaEventRecord(stopKernel[tid], stream[tid]);
 

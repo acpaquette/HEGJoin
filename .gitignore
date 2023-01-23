@@ -22,3 +22,4 @@ osm_normalize_dup_rm_50M.txt
 mod_gpu_times.csv
 neighbor_table.csv
 new_mod_neighbor_table.csv
+.gitignore
