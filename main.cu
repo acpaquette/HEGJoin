@@ -223,7 +223,7 @@ int main(int argc, char * argv[])
     gridIndexingGPU(&DBSIZE, totalCells, database, &dev_database, &epsilon, &dev_epsilon, minArr, &dev_minArr, &index, &dev_index,
             indexLookupArr, &dev_indexLookupArr, &gridCellLookupArr, &dev_gridCellLookupArr, &nNonEmptyCells, &dev_nNonEmptyCells,
             nCells, &dev_nCells);
-
+    setQueueIndex(0);
     //Neighbortable storage -- the result
     neighborTableLookup * neighborTable = new neighborTableLookup[NDdataPoints.size()];
     std::vector<struct neighborDataPtrs> pointersToNeighbors;
