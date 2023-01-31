@@ -95,7 +95,7 @@ std::pair<unsigned int, unsigned int> getBatchFromQueueCPU(
     {
         #pragma omp critical
         {
-            if(0 < queueIndexCPU && queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
+            if(queueIndexCPU > 0 && queueIndex < queueIndexCPU) {
                 begin = max(queueIndex, queueIndexCPU - batchSize);
                 end = queueIndexCPU;
                 queueIndexCPU = begin;

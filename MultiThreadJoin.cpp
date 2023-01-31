@@ -54,10 +54,11 @@ uint64_t Util::multiThreadJoinWorkQueue(
 			// unsigned int * tmpBuffer = new unsigned int[getMaxNeighbors()];
 			// unsigned int * nbNeighbors = new unsigned int;
 
-			do
-			{
-				cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
-			}while(cpuBatch.second < cpuBatch.first);
+			// do
+			// {
+			cpuBatch = getBatchFromQueueCPU(A_sz, CPU_BATCH_SIZE);
+				// cout << "CPU IN BUSY WAIT" << endl;
+			// }while(cpuBatch.second < cpuBatch.first);
 
 			do
 			{

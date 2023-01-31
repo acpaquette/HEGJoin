@@ -738,6 +738,26 @@ unsigned long long GPUBatchEst_v2(
         #endif
         fullEst = runningEst;
     } else {
+        // int batchSize = 0;
+        // for (int i = 0; i < (*DBSIZE); ++i)
+        // {
+        //     runningEst += estimatedFull[i];
+        //     // fullEst += estimatedFull[i];
+        //     if ((GPUBufferSize - reserveBuffer) <= runningEst)
+        //     {
+        //         batchSize = i;
+        //         break;
+        //     }
+        // }
+        // int numBatches = (1.0 * (*DBSIZE)) / (1.0 * batchSize);
+        // for (int i = 0; i < numBatches - 1; i++) {
+        //     batchBegin = i * batchSize;
+        //     batchEnd = (i + 1) * batchSize;
+        //     if (i == (numBatches - 2)) {
+        //         batchEnd = (*DBSIZE);
+        //     }
+        //     batches->push_back(std::make_pair(batchBegin, batchEnd));
+        // }
         for (int i = 0; i < (*DBSIZE); ++i)
         {
             runningEst += estimatedFull[i];
@@ -962,10 +982,10 @@ void distanceTableNDGridBatches(
     // {
     //     setQueueIndex((*DBSIZE)); // the GPU reserves all the computation
     // } else {
-    if (searchMode != SM_HYBRID_STATIC)
-    {
-        setQueueIndex(batchesVector[GPUSTREAMS].first);
-    }
+    // if (searchMode != SM_HYBRID_STATIC)
+    // {
+    //     setQueueIndex(batchesVector[GPUSTREAMS].first);
+    // }
     // }
 
     // setQueueIndex(0);
@@ -1167,6 +1187,15 @@ void distanceTableNDGridBatches(
 
             do
             {
+                int tpp = TPP;
+                DTYPE tppPercent = 1.0 * (batchesVector.size() - localBatchCounter) / (1.0 * batchesVector.size());
+                // cout << "BANANA: " << ceil(log2((1.0 * tpp) * tppPercent)) << endl;
+                tpp = pow(2, ceil(log2((1.0 * tpp) * tppPercent)));
+                if (tpp <= 0) {
+                    tpp = 1;
+                }
+                // cout << "TPP: " << tpp << endl;
+
                 #if !SILENT_GPU
                 cout << "[GPU "<< tid <<"] New batch: begin = " << gpuBatch.first << ", end = " << gpuBatch.second << '\n' << std::flush;
                 #endif
@@ -1207,7 +1236,7 @@ void distanceTableNDGridBatches(
                     cout.flush();
         		}
 
-                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * TPP;
+                const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * tpp;
                 #if !SILENT_GPU
                     cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
                 #endif
@@ -1221,12 +1250,12 @@ void distanceTableNDGridBatches(
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, dev_originPointIndex, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
                 #else
                     kernelNDGridIndexGlobal<<< TOTALBLOCKS, BLOCKSIZE, 0, stream[tid] >>>(&dev_batchBegin[tid], &dev_N[tid],
                         dev_database, nullptr, nullptr, dev_epsilon, dev_grid,
                         dev_indexLookupArr,dev_gridCellLookupArr, dev_minArr, dev_nCells, &dev_cnt[tid], dev_nNonEmptyCells,
-                        dev_pointIDKey[tid], dev_pointInDistValue[tid], TPP);
+                        dev_pointIDKey[tid], dev_pointInDistValue[tid], tpp);
                 #endif
                 cudaEventRecord(stopKernel[tid], stream[tid]);
 
