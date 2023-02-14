@@ -14,13 +14,15 @@
 #define GPUSTREAMS 3
 
 // Number of CPU threads to use when joining with the CPU
-// #define CPU_THREADS 8
+#define CPU_THREADS 32
 
 // Number of query points taken by a CPU thread at once
 #define CPU_BATCH_SIZE 1024
 
 // Note: Super-EGO does not work using double precision
 // TODO should merge the two variables together
+
+// Note to self, run with floats on cmp3101 and A100
 #define DTYPE double // precision used by the GPU component
 #define REAL double  // precision used by Super-EGO
 
@@ -35,7 +37,7 @@
 
 // Limits the output produced by the GPU when computing
 // 0 to output everything, 1 to limit the output
-#define SILENT_GPU 1
+#define SILENT_GPU 0
 
 // Metrics to evaluate the throughput of the CPU and GPU by counting the number of candidate points they refine
 #define COUNT_CANDIDATES 0

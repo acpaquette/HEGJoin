@@ -417,7 +417,8 @@ unsigned long long GPUBatchEst_v2(
     unsigned int * dev_nNonEmptyCells,
     unsigned int * retNumBatches,
     unsigned int * retGPUBufferSize,
-    std::vector< std::pair<unsigned int, unsigned int> > * batches)
+    std::vector< std::pair<unsigned int, unsigned int> > * batches,
+    unsigned int & largestGpuBatchSize)
 {
 
     cudaError_t errCode;
@@ -765,6 +766,9 @@ unsigned long long GPUBatchEst_v2(
             if ((GPUBufferSize - reserveBuffer) <= runningEst)
             {
                 batchEnd = i;
+                if ((batchEnd - batchBegin) > largestGpuBatchSize) {
+                    largestGpuBatchSize = batchEnd - batchBegin;
+                }
                 batches->push_back(std::make_pair(batchBegin, batchEnd));
                 batchBegin = i;
                 runningEst = 0;
@@ -773,6 +777,9 @@ unsigned long long GPUBatchEst_v2(
                 if ((*DBSIZE) - 1 == i)
                 {
                     batchEnd = (*DBSIZE);
+                    if ((batchEnd - batchBegin) > largestGpuBatchSize) {
+                        largestGpuBatchSize = batchEnd - batchBegin;
+                    }
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
                 }
             }
@@ -928,6 +935,7 @@ void distanceTableNDGridBatches(
 	unsigned int GPUBufferSize = 0;
 
     std::vector< std::pair<unsigned int, unsigned int> > batchesVector;
+    unsigned int largestGpuBatchSize = 0;
 
 	double tstartbatchest = omp_get_wtime();
     if (SM_HYBRID_STATIC == searchMode)
@@ -935,29 +943,29 @@ void distanceTableNDGridBatches(
         #if STATIC_SPLIT_QUERIES
             #if SORT_BY_WORKLOAD
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
             #else
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
             #endif
         #else
             unsigned int nbQueryPointsStatic = getStaticQueryPoint();
             cout << "[GPU | DEBUG] ~ Number of queries for the GPU: " << nbQueryPointsStatic << '\n';
             #if SORT_BY_WORKLOAD
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, &nbQueryPointsStatic, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
             #else
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, &nbQueryPointsStatic, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
             #endif
         #endif
     } else {
         #if SORT_BY_WORKLOAD
             estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
         #else
             estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector);
+                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
         #endif
     }
 	double tendbatchest = omp_get_wtime();
@@ -1175,6 +1183,9 @@ void distanceTableNDGridBatches(
     if (SM_HYBRID == searchMode)
     {
         unsigned int globalBatchCounter = GPUSTREAMS;
+        #if !SILENT_GPU
+        cout << "[GPU] Largest GPU batch size: " << largestGpuBatchSize << std::endl << std::flush;
+        #endif
 
         double tStartCompute = omp_get_wtime();
         #pragma omp parallel reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
@@ -1188,15 +1199,16 @@ void distanceTableNDGridBatches(
             do
             {
                 int tpp = TPP;
-                DTYPE tppPercent = 1.0 * (batchesVector.size() - localBatchCounter) / (1.0 * batchesVector.size());
-                // cout << "BANANA: " << ceil(log2((1.0 * tpp) * tppPercent)) << endl;
-                tpp = pow(2, ceil(log2((1.0 * tpp) * tppPercent)));
+                DTYPE tppPercent = 1.0 - (1.0 * (gpuBatch.second - gpuBatch.first) / (1.0 * largestGpuBatchSize));
+
+                tpp = pow(2, ceil(log2(TPP) * tppPercent));
                 if (tpp <= 0) {
                     tpp = 1;
                 }
-                // cout << "TPP: " << tpp << endl;
 
                 #if !SILENT_GPU
+                cout << "[GPU "<< tid <<"] "<< "TPP PERCENT: " << tppPercent << endl << std::flush;
+                cout << "[GPU "<< tid <<"] " << "TPP: " << tpp << endl << std::flush;
                 cout << "[GPU "<< tid <<"] New batch: begin = " << gpuBatch.first << ", end = " << gpuBatch.second << '\n' << std::flush;
                 #endif
 

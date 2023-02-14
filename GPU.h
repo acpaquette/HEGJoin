@@ -86,7 +86,8 @@ unsigned long long GPUBatchEst_v2(
         unsigned int * dev_nNonEmptyCells,
         unsigned int * retNumBatches,
         unsigned int * retGPUBufferSize,
-        std::vector< std::pair<unsigned int, unsigned int> > * batches);
+        std::vector< std::pair<unsigned int, unsigned int> > * batches,
+        unsigned int & largestGpuBatchSize);
 
 void constructNeighborTableKeyValueWithPtrs(
         int * pointIDKey,
