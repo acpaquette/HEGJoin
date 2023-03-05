@@ -418,7 +418,8 @@ unsigned long long GPUBatchEst_v2(
     unsigned int * retNumBatches,
     unsigned int * retGPUBufferSize,
     std::vector< std::pair<unsigned int, unsigned int> > * batches,
-    unsigned int & largestGpuBatchSize)
+    std::vector< int > * gpuBatchSelectivity,
+    unsigned int & largestGpuBatchSelectivity)
 {
 
     cudaError_t errCode;
@@ -766,10 +767,12 @@ unsigned long long GPUBatchEst_v2(
             if ((GPUBufferSize - reserveBuffer) <= runningEst)
             {
                 batchEnd = i;
-                if ((batchEnd - batchBegin) > largestGpuBatchSize) {
-                    largestGpuBatchSize = batchEnd - batchBegin;
+                int batchSelectivity = ceil((1.0 * (runningEst - (batchEnd - batchBegin))) / (1.0 * (batchEnd - batchBegin)));
+                if (batchSelectivity > largestGpuBatchSelectivity) {
+                    largestGpuBatchSelectivity = batchSelectivity;
                 }
                 batches->push_back(std::make_pair(batchBegin, batchEnd));
+                gpuBatchSelectivity->push_back(batchSelectivity);
                 batchBegin = i;
                 runningEst = 0;
             } else {
@@ -777,10 +780,15 @@ unsigned long long GPUBatchEst_v2(
                 if ((*DBSIZE) - 1 == i)
                 {
                     batchEnd = (*DBSIZE);
-                    if ((batchEnd - batchBegin) > largestGpuBatchSize) {
-                        largestGpuBatchSize = batchEnd - batchBegin;
+                    int batchSelectivity = ceil((1.0 * (runningEst - (batchEnd - batchBegin))) / (1.0 * (batchEnd - batchBegin)));
+                    if (batchSelectivity < 1) {
+                        batchSelectivity = 1;
+                    }
+                    if (batchSelectivity > largestGpuBatchSelectivity) {
+                        largestGpuBatchSelectivity = batchSelectivity;
                     }
                     batches->push_back(std::make_pair(batchBegin, batchEnd));
+                    gpuBatchSelectivity->push_back(batchSelectivity);
                 }
             }
         }
@@ -935,7 +943,8 @@ void distanceTableNDGridBatches(
 	unsigned int GPUBufferSize = 0;
 
     std::vector< std::pair<unsigned int, unsigned int> > batchesVector;
-    unsigned int largestGpuBatchSize = 0;
+    std::vector< int > gpuBatchSelectivity;
+    unsigned int largestGpuBatchSelectivity = 0;
 
 	double tstartbatchest = omp_get_wtime();
     if (SM_HYBRID_STATIC == searchMode)
@@ -943,29 +952,29 @@ void distanceTableNDGridBatches(
         #if STATIC_SPLIT_QUERIES
             #if SORT_BY_WORKLOAD
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuBatchSelectivity);
             #else
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuBatchSelectivity);
             #endif
         #else
             unsigned int nbQueryPointsStatic = getStaticQueryPoint();
             cout << "[GPU | DEBUG] ~ Number of queries for the GPU: " << nbQueryPointsStatic << '\n';
             #if SORT_BY_WORKLOAD
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, &nbQueryPointsStatic, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuSelectivitySize);
             #else
                 estimatedNeighbors = GPUBatchEst_v2(searchMode, &nbQueryPointsStatic, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                        dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuBatchSelectivity);
             #endif
         #endif
     } else {
         #if SORT_BY_WORKLOAD
             estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, dev_originPointIndex, dev_epsilon, dev_grid, dev_indexLookupArr,
-                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuBatchSelectivity);
         #else
             estimatedNeighbors = GPUBatchEst_v2(searchMode, DBSIZE, staticPartition, dev_database, nullptr, dev_epsilon, dev_grid, dev_indexLookupArr,
-                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, largestGpuBatchSize);
+                    dev_gridCellLookupArr, dev_minArr, dev_nCells, dev_nNonEmptyCells, &numBatches, &GPUBufferSize, &batchesVector, &gpuBatchSelectivity, largestGpuBatchSelectivity);
         #endif
     }
 	double tendbatchest = omp_get_wtime();
@@ -1182,31 +1191,39 @@ void distanceTableNDGridBatches(
 
     if (SM_HYBRID == searchMode)
     {
-        unsigned int globalBatchCounter = GPUSTREAMS;
+        unsigned int globalBatchCounter = 0;
         #if !SILENT_GPU
-        cout << "[GPU] Largest GPU batch size: " << largestGpuBatchSize << std::endl << std::flush;
+        cout << "[GPU] Largest GPU batch selectivity: " << largestGpuBatchSelectivity << std::endl << std::flush;
         #endif
 
         double tStartCompute = omp_get_wtime();
         #pragma omp parallel reduction(+: totalResultsLoop) num_threads(GPUSTREAMS)
         {
             unsigned int tid = omp_get_thread_num();
+             batchSelectivity = 0;
+            std::pair<unsigned int, unsigned int> gpuBatch;
+            unsigned int localBatchCounter = 0;
             // std::pair<unsigned int, unsigned int> gpuBatch = std::make_pair(tid * batchSize, tid * batchSize + batchSize);
-            std::pair<unsigned int, unsigned int> gpuBatch = getBatchFromQueue_v2(batchesVector);
 
-            unsigned int localBatchCounter = tid;
+            #pragma omp critical
+            {
+                localBatchCounter = globalBatchCounter;
+                gpuBatch = getBatchFromQueue_v2(batchesVector);
+                batchSelectivity = gpuBatchSelectivity[localBatchCounter];
+                globalBatchCounter++;
+            }
 
             do
             {
                 int tpp = TPP;
-                DTYPE tppPercent = 1.0 - (1.0 * (gpuBatch.second - gpuBatch.first) / (1.0 * largestGpuBatchSize));
-
+                DTYPE tppPercent = (1.0 * batchSelectivity) / (1.0 * (largestGpuBatchSelectivity));
                 tpp = pow(2, ceil(log2(TPP) * tppPercent));
-                if (tpp <= 0) {
+                if (tpp <= 0 || tppPercent < 0.05) {
                     tpp = 1;
                 }
 
                 #if !SILENT_GPU
+                cout << "[GPU "<< tid <<"] "<< "Batch Selectivity: " << batchSelectivity << endl << std::flush;
                 cout << "[GPU "<< tid <<"] "<< "TPP PERCENT: " << tppPercent << endl << std::flush;
                 cout << "[GPU "<< tid <<"] " << "TPP: " << tpp << endl << std::flush;
                 cout << "[GPU "<< tid <<"] New batch: begin = " << gpuBatch.first << ", end = " << gpuBatch.second << '\n' << std::flush;
@@ -1352,12 +1369,13 @@ void distanceTableNDGridBatches(
                 #endif
 
                 // gpuBatch = getBatchFromQueue(*DBSIZE, batchSize);
-                gpuBatch = getBatchFromQueue_v2(batchesVector);
                 // gpuBatch = getBatchFromQueue(9 * batchSize, batchSize);
 
                 #pragma omp critical
                 {
                     localBatchCounter = globalBatchCounter;
+                    gpuBatch = getBatchFromQueue_v2(batchesVector);
+                    batchSelectivity = gpuBatchSelectivity[localBatchCounter];
                     globalBatchCounter++;
                 }
 
@@ -1399,6 +1417,15 @@ void distanceTableNDGridBatches(
                 cout << "[GPU] ~ tid " << tid << ", starting iteration " << i << '\n' << std::flush;
             #endif
 
+            int batchSelectivity = gpuBatchSelectivity[i];
+            
+            int tpp = TPP;
+            DTYPE tppPercent = (1.0 * batchSelectivity) / (1.0 * (largestGpuBatchSelectivity));
+            tpp = pow(2, ceil(log2(TPP) * tppPercent));
+            if (tpp <= 0 || tppPercent < 0.05) {
+                tpp = 1;
+            }
+
     		//N NOW BECOMES THE NUMBER OF POINTS TO PROCESS PER BATCH
     		//AS ONE GPU THREAD PROCESSES A SINGLE POINT
 
@@ -1439,7 +1466,7 @@ void distanceTableNDGridBatches(
                 cout.flush();
     		}
 
-    		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * TPP;
+    		const int TOTALBLOCKS = ceil( (1.0 * (N[tid])) / (1.0 * BLOCKSIZE) ) * tpp;
             #if !SILENT_GPU
                 cout << "[GPU " << tid << "] ~ Total blocks: " << TOTALBLOCKS << '\n' << std::flush;
             #endif

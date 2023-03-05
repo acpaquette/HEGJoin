@@ -65,23 +65,23 @@ std::pair<unsigned int, unsigned int> getBatchFromQueue_v2(
     unsigned int begin, end;
     if(gpuOffset)
     {
-        #pragma omp critical
-        {
-            unsigned int tid = omp_get_thread_num();
-            if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
-                begin = batches[gpuBatch].first;
-                end = min(batches[gpuBatch].second, queueIndexCPU);
-                #if !SILENT_GPU
-                std::cout << "[GPU " << tid << "] Got Batch begin end from " << begin << ", " << batches[gpuBatch].second << ", " << queueIndexCPU << std::endl << std::flush;
-                #endif
-                queueIndex = end;
-                gpuBatch++;
-            }
-            else {
-                begin = 0;
-                end = 0;
-            }
+        // #pragma omp critical
+        // {
+        unsigned int tid = omp_get_thread_num();
+        if(queueIndex < queueIndexCPU && queueIndex != queueIndexCPU) {
+            begin = batches[gpuBatch].first;
+            end = min(batches[gpuBatch].second, queueIndexCPU);
+            #if !SILENT_GPU
+            std::cout << "[GPU " << tid << "] Got Batch begin end from " << begin << ", " << batches[gpuBatch].second << ", " << queueIndexCPU << std::endl << std::flush;
+            #endif
+            queueIndex = end;
+            gpuBatch++;
         }
+        else {
+            begin = 0;
+            end = 0;
+        }
+        // }
     }
     else {
         begin = 1;
